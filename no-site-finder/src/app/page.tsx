@@ -311,7 +311,7 @@ export default function Home() {
         <div className="mb-6">
           <div className="flex items-center gap-2 mb-2 flex-wrap">
             <PresetSelect onSelect={(v) => setQuery(v)} />
-            <span className="text-xs text-gray-400">— or type your own below. Add a city: "plumber in Austin"</span>
+            <span className="text-xs text-gray-400">— or type your own below. Add a city: &quot;plumber in Austin&quot;</span>
           </div>
           <div className="flex gap-2">
             <input
