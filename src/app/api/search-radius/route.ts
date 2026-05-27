@@ -178,12 +178,15 @@ export async function POST(req: Request) {
     await new Promise((r) => setTimeout(r, 100));
   }
 
-  // Fetch page 2 for all grid points that had more results.
-  // Page tokens require ~2s to activate; fetch all in parallel after one wait.
-  if (pageTokens.length > 0) {
+  // Fetch page 2, then page 3, for all grid points that had more results.
+  // Page tokens require ~2s to activate; fetch each page in parallel after one wait.
+  let nextPageTokens = pageTokens;
+  for (let page = 2; page <= 3; page++) {
+    if (nextPageTokens.length === 0) break;
     await new Promise((r) => setTimeout(r, 2000));
+    const page3Tokens: string[] = [];
     await Promise.all(
-      pageTokens.map(async (token) => {
+      nextPageTokens.map(async (token) => {
         try {
           const url2 = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${encodeURIComponent(token)}&key=${apiKey}`;
           const res2 = await fetch(url2);
@@ -194,11 +197,13 @@ export async function POST(req: Request) {
               allPlaceIds.push(place.place_id);
             }
           }
+          if (data2.next_page_token) page3Tokens.push(data2.next_page_token);
         } catch {
           // non-fatal
         }
       })
     );
+    nextPageTokens = page3Tokens;
   }
 
   // Step 4: Fetch Place Details + website health checks (shared utility)

@@ -45,7 +45,7 @@ const HIGH_VALUE_SCORE = 200;
 const DEFAULT_FILTERS: Filters = {
   minReviews: 0,
   minRating: 0,
-  websiteStatus: 'missing',
+  websiteStatus: 'missing_or_broken',
   category: '',
   city: '',
 };
@@ -178,6 +178,7 @@ export default function Home() {
   const [searchMeta, setSearchMeta] = useState<SearchMeta | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
+  const [searchPerformed, setSearchPerformed] = useState(false);
 
   const [enriching, setEnriching] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
@@ -230,6 +231,7 @@ export default function Home() {
         setLeads(data.businesses ?? []);
         if (data.usage) setUsage(data.usage);
         setRecentQueryList(recentSearches.saveQuery(query));
+        setSearchPerformed(true);
       } else {
         setError(data.error || 'Error fetching leads');
       }
@@ -262,6 +264,7 @@ export default function Home() {
         setSearchMeta(data.meta ?? null);
         if (data.usage) setUsage(data.usage);
         setRecentCatList(recentSearches.saveCategory(category));
+        setSearchPerformed(true);
       } else {
         setError(data.error || 'Error fetching leads');
       }
@@ -366,7 +369,7 @@ export default function Home() {
   );
 
   const stats = useMemo(() => {
-    const noWebsite = leads.filter((b) => !b.hasWebsite);
+    const noWebsite = leads.filter((b) => !b.hasWebsite || b.websiteStatus === 'broken');
     const highValue = noWebsite.filter((b) => b.leadScore >= HIGH_VALUE_SCORE);
     const avgReviews = noWebsite.length
       ? Math.round(noWebsite.reduce((s, b) => s + (b.reviewCount ?? 0), 0) / noWebsite.length)
@@ -551,7 +554,7 @@ export default function Home() {
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard icon="📍" label="Total Found" value={stats.total} />
-              <StatCard icon="🚫" label="No Website" value={stats.noWebsite} highlight />
+              <StatCard icon="🚫" label="No/Broken Site" value={stats.noWebsite} highlight />
               <StatCard icon="🔥" label="High Opportunity" value={stats.highValue} highlight={stats.highValue > 0} />
               <StatCard icon="⭐" label="Avg Reviews" value={stats.avgReviews} />
             </div>
@@ -756,9 +759,25 @@ export default function Home() {
               </div>
             </div>
 
-            {sorted.length === 0 && (
-              <div className="bg-white border border-slate-200 rounded-xl py-12 text-center text-slate-500 text-sm">
-                No leads match your current filters.
+            {sorted.length === 0 && searchPerformed && (
+              <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
+                {leads.length > 0 ? (
+                  <>
+                    <p className="text-slate-600 font-medium">No leads match your current filters.</p>
+                    <p className="text-slate-400 text-sm">
+                      Found {leads.length} business{leads.length !== 1 ? 'es' : ''} total — none had missing or broken websites in this area.
+                    </p>
+                    <button
+                      onClick={() => setFilters((f) => ({ ...f, websiteStatus: 'any' }))}
+                      className="text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Show all {leads.length} businesses
+                    </button>
+                    <p className="text-xs text-slate-400">Tip: Try a smaller city — towns of 50k–300k population tend to have more businesses without websites.</p>
+                  </>
+                ) : (
+                  <p className="text-slate-500 text-sm">No results found. Try a different keyword or city.</p>
+                )}
               </div>
             )}
 
