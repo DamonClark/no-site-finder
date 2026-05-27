@@ -140,9 +140,12 @@ export async function POST(req: Request) {
   // Step 2: Generate search grid
   const searchPoints = generateSearchPoints(center.lat, center.lng, radiusMiles);
 
-  // Step 3: Run Nearby Search at every grid point, deduplicate by place_id
+  // Step 3: Run Nearby Search at every grid point, deduplicate by place_id.
+  // Collect next_page_tokens so we can fetch page 2 for all points in one parallel
+  // batch after a single 2-second wait (vs 2s × N sequential waits).
   const seenPlaceIds = new Set<string>();
   const allPlaceIds: string[] = [];
+  const pageTokens: string[] = [];
 
   for (const point of searchPoints) {
     const url = [
@@ -164,6 +167,9 @@ export async function POST(req: Request) {
           }
         }
       }
+      if (data.next_page_token) {
+        pageTokens.push(data.next_page_token);
+      }
     } catch {
       // Skip failed grid points rather than aborting the whole request
     }
@@ -172,9 +178,32 @@ export async function POST(req: Request) {
     await new Promise((r) => setTimeout(r, 100));
   }
 
+  // Fetch page 2 for all grid points that had more results.
+  // Page tokens require ~2s to activate; fetch all in parallel after one wait.
+  if (pageTokens.length > 0) {
+    await new Promise((r) => setTimeout(r, 2000));
+    await Promise.all(
+      pageTokens.map(async (token) => {
+        try {
+          const url2 = `https://maps.googleapis.com/maps/api/place/nearbysearch/json?pagetoken=${encodeURIComponent(token)}&key=${apiKey}`;
+          const res2 = await fetch(url2);
+          const data2 = await res2.json();
+          for (const place of data2.results ?? []) {
+            if (!seenPlaceIds.has(place.place_id)) {
+              seenPlaceIds.add(place.place_id);
+              allPlaceIds.push(place.place_id);
+            }
+          }
+        } catch {
+          // non-fatal
+        }
+      })
+    );
+  }
+
   // Step 4: Fetch Place Details + website health checks (shared utility)
-  // Cap at 60 to limit Place Details API spend (~$1.02 max vs unbounded).
-  const businesses = await processBatch(allPlaceIds.slice(0, 60), apiKey);
+  // Cap at 100 to keep Place Details spend bounded (~$1.70 max).
+  const businesses = await processBatch(allPlaceIds.slice(0, 100), apiKey);
 
   // Step 5: Derive towns list from result addresses
   const towns = [

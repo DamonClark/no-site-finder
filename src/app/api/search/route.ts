@@ -28,8 +28,13 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
   }
 
-  // Step 1: Collect all place IDs across up to 3 pages (max 60 results)
+  // Step 1: Collect place IDs from up to 3 pages of Text Search.
+  // Also capture the city center from the first result's geometry so we can
+  // run a supplemental Nearby Search that surfaces lower-visibility local businesses.
   const placeIds: string[] = [];
+  const seenIds = new Set<string>();
+  let cityCenter: { lat: number; lng: number } | null = null;
+
   let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
   let pageCount = 0;
 
@@ -39,7 +44,13 @@ export async function POST(req: Request) {
     if (!searchData.results) break;
 
     for (const place of searchData.results) {
-      placeIds.push(place.place_id);
+      if (!seenIds.has(place.place_id)) {
+        seenIds.add(place.place_id);
+        placeIds.push(place.place_id);
+        if (!cityCenter && place.geometry?.location) {
+          cityCenter = place.geometry.location;
+        }
+      }
     }
 
     pageCount++;
@@ -51,8 +62,36 @@ export async function POST(req: Request) {
     }
   } while (true);
 
-  // Step 2: Fetch details + website checks for all unique places
-  const businesses = await processBatch(placeIds, apiKey);
+  // Step 2: Supplemental Nearby Search around the city center (1 extra API call).
+  // Text Search returns results ordered by prominence (established businesses with websites).
+  // Nearby Search orders by distance, surfacing more local and lower-profile businesses
+  // that are more likely to lack a website.
+  if (cityCenter) {
+    const keyword = query.split(/\s+in\s+/i)[0].trim() || query;
+    const nearbyUrl = [
+      'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+      `?location=${cityCenter.lat},${cityCenter.lng}`,
+      `&radius=20000`,
+      `&keyword=${encodeURIComponent(keyword)}`,
+      `&key=${apiKey}`,
+    ].join('');
+
+    try {
+      const nearbyRes = await fetch(nearbyUrl);
+      const nearbyData = await nearbyRes.json();
+      for (const place of nearbyData.results ?? []) {
+        if (!seenIds.has(place.place_id)) {
+          seenIds.add(place.place_id);
+          placeIds.push(place.place_id);
+        }
+      }
+    } catch {
+      // Non-fatal — proceed with text search results only
+    }
+  }
+
+  // Step 3: Fetch details + website checks for all unique places (capped at 80)
+  const businesses = await processBatch(placeIds.slice(0, 80), apiKey);
 
   return NextResponse.json({ businesses, usage });
 }
