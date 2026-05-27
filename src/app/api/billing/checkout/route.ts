@@ -10,7 +10,7 @@ export async function POST() {
   const clerkUser = await currentUser();
   const email = clerkUser?.emailAddresses[0]?.emailAddress;
 
-  let user = await prisma.user.findUnique({ where: { clerkId: userId } });
+  const user = await prisma.user.findUnique({ where: { clerkId: userId } });
   let customerId = user?.stripeCustomerId;
 
   if (!customerId) {
