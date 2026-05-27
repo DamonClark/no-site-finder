@@ -6,8 +6,13 @@ export async function POST(req: Request) {
   let usage;
   try {
     usage = await checkAndIncrementUsage();
-  } catch {
-    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.error('[search] checkAndIncrementUsage failed:', msg);
+    if (msg === 'Unauthenticated') {
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    return NextResponse.json({ error: `Server error: ${msg}` }, { status: 500 });
   }
   if (!usage.allowed) {
     return NextResponse.json(
