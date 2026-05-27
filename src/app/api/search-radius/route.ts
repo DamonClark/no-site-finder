@@ -112,13 +112,16 @@ export async function POST(req: Request) {
     );
   }
 
-  const { category, baseCity, radiusMiles } = await req.json();
+  const { category, baseCity, radiusMiles: rawRadius } = await req.json();
+  // Hard cap at 25 miles — beyond that the grid grows to 19 points and Place Details
+  // calls can reach 200+, costing $3-7 per search at Google API rates.
+  const radiusMiles = Math.min(Number(rawRadius) || 10, 25);
   const apiKey = process.env.GOOGLE_API_KEY;
 
   if (!apiKey) return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
   if (!category?.trim()) return NextResponse.json({ error: 'category is required' }, { status: 400 });
   if (!baseCity?.trim()) return NextResponse.json({ error: 'baseCity is required' }, { status: 400 });
-  if (!radiusMiles) return NextResponse.json({ error: 'radiusMiles is required' }, { status: 400 });
+  if (!rawRadius) return NextResponse.json({ error: 'radiusMiles is required' }, { status: 400 });
 
   // Step 1: Geocode the base city
   const center = await geocodeCity(baseCity, apiKey);
@@ -165,7 +168,8 @@ export async function POST(req: Request) {
   }
 
   // Step 4: Fetch Place Details + website health checks (shared utility)
-  const businesses = await processBatch(allPlaceIds, apiKey);
+  // Cap at 60 to limit Place Details API spend (~$1.02 max vs unbounded).
+  const businesses = await processBatch(allPlaceIds.slice(0, 60), apiKey);
 
   // Step 5: Derive towns list from result addresses
   const towns = [

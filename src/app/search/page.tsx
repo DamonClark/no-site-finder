@@ -50,7 +50,7 @@ const DEFAULT_FILTERS: Filters = {
   city: '',
 };
 
-const RADIUS_OPTIONS = [10, 25, 50] as const;
+const RADIUS_OPTIONS = [10, 25] as const;
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -514,7 +514,7 @@ export default function Home() {
                   </button>
                 ))}
                 <span className="text-xs text-slate-400 ml-auto">
-                  {radiusMiles <= 25 ? '~7 search points' : '~19 search points'}
+                  ~7 search points
                 </span>
               </div>
 
