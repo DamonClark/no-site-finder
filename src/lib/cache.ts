@@ -19,9 +19,13 @@ export async function getCachedSearch(cacheKey: string) {
 
 export async function setCachedSearch(cacheKey: string, results: Business[], meta?: object) {
   const expiresAt = new Date(Date.now() + TTL_MS);
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const r = results as any;
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const m = (meta ?? null) as any;
   await prisma.searchCache.upsert({
     where: { cacheKey },
-    update: { results, meta: meta ?? null, expiresAt },
-    create: { cacheKey, results, meta: meta ?? null, expiresAt },
+    update: { results: r, meta: m, expiresAt },
+    create: { cacheKey, results: r, meta: m, expiresAt },
   });
 }
