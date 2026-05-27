@@ -109,6 +109,10 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
       profileUrl,
       businessStatus: result.business_status ?? 'UNKNOWN',
       leadScore: computeLeadScore(rating, reviewCount, websiteStatus),
+      email: null,
+      emailSource: null,
+      ownerName: null,
+      enriched: false,
     });
   }
 

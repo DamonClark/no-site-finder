@@ -13,4 +13,9 @@ export interface Business {
   profileUrl: string;
   businessStatus: string;
   leadScore: number;
+  // Contact enrichment (populated on demand)
+  email: string | null;
+  emailSource: 'hunter' | null;
+  ownerName: string | null;
+  enriched: boolean;
 }

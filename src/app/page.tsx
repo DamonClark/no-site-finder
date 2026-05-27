@@ -1,742 +1,280 @@
-'use client';
+import Link from 'next/link';
+import { SignedIn, SignedOut } from '@clerk/nextjs';
+import { UpgradeButton } from '@/components/UpgradeButton';
 
-import { useState, useMemo, useEffect } from 'react';
-import type { Business } from '@/types';
-import { INDUSTRY_GROUPS, recentSearches } from '@/lib/industry-presets';
-
-// ─── Types ────────────────────────────────────────────────────────────────────
-
-type SortKey = 'leadScore' | 'reviewCount' | 'rating' | 'name';
-type WebsiteFilter = 'any' | 'missing' | 'missing_or_broken' | 'broken' | 'slow';
-type SearchMode = 'single' | 'radius';
-
-interface Filters {
-  minReviews: number;
-  minRating: number;
-  websiteStatus: WebsiteFilter;
-  category: string;
-  city: string;
-}
-
-interface SearchMeta {
-  searchPointsUsed: number;
-  rawResultsFound: number;
-  townsFound: string[];
-}
-
-// ─── Constants ────────────────────────────────────────────────────────────────
-
-const HIGH_VALUE_SCORE = 200; // ~50 reviews × 4.0 stars
-
-const DEFAULT_FILTERS: Filters = {
-  minReviews: 0,
-  minRating: 0,
-  websiteStatus: 'missing',
-  category: '',
-  city: '',
-};
-
-const RADIUS_OPTIONS = [10, 25, 50] as const;
-
-// ─── Pure helpers ─────────────────────────────────────────────────────────────
-
-function getScoreBadge(score: number, hasWebsite: boolean) {
-  if (hasWebsite && score === 0)
-    return { label: 'Has Website', className: 'bg-gray-100 text-gray-500 border border-gray-200' };
-  if (score >= HIGH_VALUE_SCORE)
-    return { label: '🔥 High Opportunity', className: 'bg-red-100 text-red-700 border border-red-200' };
-  if (score >= 50)
-    return { label: 'Warm Lead', className: 'bg-yellow-100 text-yellow-700 border border-yellow-200' };
-  return { label: 'Cool Lead', className: 'bg-blue-100 text-blue-700 border border-blue-200' };
-}
-
-function exportCSV(businesses: Business[], filename = 'leads.csv') {
-  const headers = [
-    'Name', 'Address', 'Phone', 'Rating', 'Reviews', 'Lead Score', 'Category',
-    'Has Website', 'Website', 'Website Status', 'Business Status', 'Maps URL', 'Profile URL',
-  ];
-  const rows = businesses.map((b) => [
-    b.name, b.address, b.phone,
-    b.rating ?? '', b.reviewCount ?? '', b.leadScore, b.category,
-    b.hasWebsite ? 'Yes' : 'No', b.website ?? '', b.websiteStatus,
-    b.businessStatus, b.mapsUrl, b.profileUrl,
-  ]);
-  const csv = [headers, ...rows]
-    .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const objectUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = objectUrl;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(objectUrl);
-}
-
-function applyFilters(leads: Business[], filters: Filters): Business[] {
-  return leads.filter((b) => {
-    if (filters.minReviews > 0 && (b.reviewCount ?? 0) < filters.minReviews) return false;
-    if (filters.minRating > 0 && (b.rating ?? 0) < filters.minRating) return false;
-    if (filters.category && !b.category.toLowerCase().includes(filters.category.toLowerCase())) return false;
-    if (filters.city && !b.address.toLowerCase().includes(filters.city.toLowerCase())) return false;
-    if (filters.websiteStatus === 'missing' && b.hasWebsite) return false;
-    if (filters.websiteStatus === 'missing_or_broken' && b.websiteStatus !== 'none' && b.websiteStatus !== 'broken') return false;
-    if (filters.websiteStatus === 'broken' && b.websiteStatus !== 'broken') return false;
-    if (filters.websiteStatus === 'slow' && b.websiteStatus !== 'slow') return false;
-    return true;
-  });
-}
-
-// ─── Sub-components ───────────────────────────────────────────────────────────
-
-/** Grouped <select> that resets to placeholder after each selection. */
-function PresetSelect({ onSelect }: { onSelect: (value: string) => void }) {
+export default function LandingPage() {
   return (
-    <select
-      defaultValue=""
-      onChange={(e) => {
-        if (e.target.value) onSelect(e.target.value);
-        // Reset so the same item can be re-selected
-        e.target.value = '';
-      }}
-      className="border rounded px-2 py-1.5 text-sm bg-white text-gray-600 cursor-pointer hover:border-blue-400 transition-colors"
-    >
-      <option value="" disabled>Industry Presets ▾</option>
-      {INDUSTRY_GROUPS.map((group) => (
-        <optgroup key={group.group} label={group.group}>
-          {group.items.map((item) => (
-            <option key={item.value} value={item.value}>
-              {item.label}
-            </option>
-          ))}
-        </optgroup>
-      ))}
-    </select>
-  );
-}
-
-/** Clickable chips for recently used searches. */
-function RecentChips({ items, onSelect }: { items: string[]; onSelect: (v: string) => void }) {
-  if (items.length === 0) return null;
-  return (
-    <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
-      <span className="text-xs text-gray-400 shrink-0">Recent:</span>
-      {items.map((item) => (
-        <button
-          key={item}
-          onClick={() => onSelect(item)}
-          className="text-xs bg-gray-100 hover:bg-blue-50 hover:text-blue-700 text-gray-600 border border-gray-200 hover:border-blue-300 rounded-full px-2.5 py-0.5 transition-colors"
-        >
-          {item}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function StatCard({ label, value, highlight = false }: { label: string; value: number; highlight?: boolean }) {
-  return (
-    <div className={`rounded-lg border p-3 text-center ${highlight ? 'border-blue-200 bg-blue-50' : 'bg-gray-50'}`}>
-      <p className={`text-2xl font-bold ${highlight ? 'text-blue-700' : 'text-gray-800'}`}>
-        {value.toLocaleString()}
-      </p>
-      <p className="text-xs text-gray-500 mt-0.5">{label}</p>
-    </div>
-  );
-}
-
-// ─── Main component ───────────────────────────────────────────────────────────
-
-export default function Home() {
-  // Search inputs
-  const [searchMode, setSearchMode] = useState<SearchMode>('single');
-  const [query, setQuery] = useState('');
-  const [category, setCategory] = useState('');
-  const [baseCity, setBaseCity] = useState('');
-  const [radiusMiles, setRadiusMiles] = useState<number>(25);
-
-  // Recent searches (populated from localStorage after mount)
-  const [recentQueryList, setRecentQueryList] = useState<string[]>([]);
-  const [recentCatList, setRecentCatList] = useState<string[]>([]);
-
-  useEffect(() => {
-    setRecentQueryList(recentSearches.getQueries());
-    setRecentCatList(recentSearches.getCategories());
-  }, []);
-
-  // Results
-  const [leads, setLeads] = useState<Business[]>([]);
-  const [searchMeta, setSearchMeta] = useState<SearchMeta | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  // Display controls
-  const [sortKey, setSortKey] = useState<SortKey>('leadScore');
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
-  const [showFilters, setShowFilters] = useState(false);
-  const [topN, setTopN] = useState<number | null>(null);
-  const [copiedPhone, setCopiedPhone] = useState<string | null>(null);
-
-  // ── Search handlers ──
-
-  const handleSingleSearch = async () => {
-    if (!query.trim()) return;
-    setLoading(true);
-    setError('');
-    setLeads([]);
-    setSearchMeta(null);
-    setTopN(null);
-    try {
-      const res = await fetch('/api/search', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ query }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setLeads(data.businesses ?? []);
-        setRecentQueryList(recentSearches.saveQuery(query));
-      } else {
-        setError(data.error || 'Error fetching leads');
-      }
-    } catch {
-      setError('Network error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleRadiusSearch = async () => {
-    if (!category.trim() || !baseCity.trim()) return;
-    setLoading(true);
-    setError('');
-    setLeads([]);
-    setSearchMeta(null);
-    setTopN(null);
-    try {
-      const res = await fetch('/api/search-radius', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ category, baseCity, radiusMiles }),
-      });
-      const data = await res.json();
-      if (res.ok) {
-        setLeads(data.businesses ?? []);
-        setSearchMeta(data.meta ?? null);
-        setRecentCatList(recentSearches.saveCategory(category));
-      } else {
-        setError(data.error || 'Error fetching leads');
-      }
-    } catch {
-      setError('Network error');
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleSearch = searchMode === 'single' ? handleSingleSearch : handleRadiusSearch;
-
-  const applyPreset = (preset: Partial<Filters> & { topN?: number | null; sort?: SortKey }) => {
-    const { topN: presetTopN, sort, ...filterParts } = preset;
-    setFilters({ ...DEFAULT_FILTERS, ...filterParts });
-    setTopN(presetTopN ?? null);
-    if (sort) setSortKey(sort);
-  };
-
-  const copyPhone = (phone: string) => {
-    navigator.clipboard.writeText(phone);
-    setCopiedPhone(phone);
-    setTimeout(() => setCopiedPhone(null), 2000);
-  };
-
-  // ── Derived data ──
-
-  const filtered = useMemo(() => applyFilters(leads, filters), [leads, filters]);
-
-  const sorted = useMemo(() => {
-    const s = [...filtered].sort((a, b) => {
-      if (sortKey === 'leadScore') return b.leadScore - a.leadScore;
-      if (sortKey === 'reviewCount') return (b.reviewCount ?? 0) - (a.reviewCount ?? 0);
-      if (sortKey === 'rating') return (b.rating ?? 0) - (a.rating ?? 0);
-      return a.name.localeCompare(b.name);
-    });
-    return topN ? s.slice(0, topN) : s;
-  }, [filtered, sortKey, topN]);
-
-  const stats = useMemo(() => {
-    const noWebsite = leads.filter((b) => !b.hasWebsite);
-    const highValue = noWebsite.filter((b) => b.leadScore >= HIGH_VALUE_SCORE);
-    const avgReviews = noWebsite.length
-      ? Math.round(noWebsite.reduce((s, b) => s + (b.reviewCount ?? 0), 0) / noWebsite.length)
-      : 0;
-    const categoryCounts: Record<string, number> = {};
-    for (const b of noWebsite) {
-      const cat = b.category.split(',')[0].trim() || 'Unknown';
-      categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
-    }
-    const topCategories = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    return { total: leads.length, noWebsite: noWebsite.length, highValue: highValue.length, avgReviews, topCategories };
-  }, [leads]);
-
-  // ── Render ──
-
-  const loadingMessage = searchMode === 'radius'
-    ? `Searching ${category} within ${radiusMiles} miles of ${baseCity}…`
-    : 'Searching…';
-
-  return (
-    <main className="max-w-3xl mx-auto p-4 pb-16">
-      <h1 className="text-2xl font-bold mb-1">No Site Finder</h1>
-      <p className="text-gray-500 text-sm mb-5">
-        Find local businesses without a website — high-quality leads for web design outreach.
-      </p>
-
-      {/* Mode toggle */}
-      <div className="flex border rounded-lg overflow-hidden w-fit mb-4">
-        {(['single', 'radius'] as const).map((mode) => (
-          <button
-            key={mode}
-            onClick={() => setSearchMode(mode)}
-            className={`px-4 py-2 text-sm font-medium transition-colors ${
-              searchMode === mode ? 'bg-blue-600 text-white' : 'bg-white text-gray-600 hover:bg-gray-50'
-            }`}
-          >
-            {mode === 'single' ? 'Single Search' : 'Radius Search'}
-          </button>
-        ))}
-      </div>
-
-      {/* Search form */}
-      {searchMode === 'single' ? (
-        <div className="mb-6">
-          <div className="flex items-center gap-2 mb-2 flex-wrap">
-            <PresetSelect onSelect={(v) => setQuery(v)} />
-            <span className="text-xs text-gray-400">— or type your own below. Add a city: &quot;plumber in Austin&quot;</span>
+    <div className="min-h-screen bg-white text-gray-900">
+      {/* Sticky Nav */}
+      <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-sm border-b border-slate-200">
+        <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="flex items-center gap-2">
+            <span className="w-7 h-7 bg-blue-600 rounded-lg flex items-center justify-center flex-shrink-0">
+              <svg className="w-4 h-4 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              </svg>
+            </span>
+            <span className="font-bold text-lg tracking-tight">No-Site Finder</span>
           </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              placeholder="e.g. plumbers in New York"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-              className="border rounded p-2 flex-1"
-            />
-            <button
-              onClick={handleSearch}
-              disabled={loading}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-4 py-2 rounded disabled:opacity-50 transition-colors"
-            >
-              {loading ? loadingMessage : 'Search'}
-            </button>
-          </div>
-          <RecentChips items={recentQueryList} onSelect={(v) => setQuery(v)} />
-        </div>
-      ) : (
-        <div className="border rounded-lg p-4 bg-gray-50 mb-6 space-y-3">
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-            <label className="flex flex-col gap-1 text-sm">
-              <div className="flex items-center justify-between gap-2">
-                <span className="font-medium text-gray-700">Business Category</span>
-                <PresetSelect onSelect={(v) => setCategory(v)} />
-              </div>
-              <input
-                type="text"
-                placeholder="e.g. plumber  — or pick a preset above"
-                value={category}
-                onChange={(e) => setCategory(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="border rounded p-2 bg-white"
-              />
-              <RecentChips items={recentCatList} onSelect={(v) => setCategory(v)} />
-            </label>
-            <label className="flex flex-col gap-1 text-sm">
-              <span className="font-medium text-gray-700">Base City</span>
-              <input
-                type="text"
-                placeholder="e.g. Pittsburgh, PA"
-                value={baseCity}
-                onChange={(e) => setBaseCity(e.target.value)}
-                onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
-                className="border rounded p-2 bg-white"
-              />
-            </label>
-          </div>
-
-          <div className="flex items-center gap-3 flex-wrap">
-            <span className="text-sm font-medium text-gray-700">Search radius:</span>
-            {RADIUS_OPTIONS.map((r) => (
-              <button
-                key={r}
-                onClick={() => setRadiusMiles(r)}
-                className={`text-sm px-3 py-1 rounded-full border transition-colors ${
-                  radiusMiles === r
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 hover:bg-gray-100'
-                }`}
+          <div className="flex items-center gap-3">
+            <SignedOut>
+              <Link href="/sign-in" className="text-sm text-slate-600 hover:text-slate-900 transition-colors font-medium hidden sm:block">
+                Sign in
+              </Link>
+              <Link
+                href="/sign-up"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
               >
-                {r} mi
-              </button>
+                Get started free
+              </Link>
+            </SignedOut>
+            <SignedIn>
+              <Link
+                href="/search"
+                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
+              >
+                Open App →
+              </Link>
+            </SignedIn>
+          </div>
+        </div>
+      </nav>
+
+      {/* Hero */}
+      <section className="relative overflow-hidden bg-gradient-to-b from-white via-blue-50/40 to-slate-50">
+        <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.12),transparent)] pointer-events-none" />
+        <div className="max-w-4xl mx-auto text-center py-24 px-6 relative">
+          <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-8 border border-blue-200">
+            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
+            Built for web designers &amp; freelancers
+          </div>
+          <h1 className="text-5xl sm:text-6xl font-extrabold text-slate-900 leading-[1.1] tracking-tight mb-6">
+            Find businesses<br />
+            <span className="text-blue-600">without websites</span><br />
+            in seconds
+          </h1>
+          <p className="text-xl text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
+            Discover high-intent web design leads hidden in Google Maps. Search by keyword or radius,
+            score leads automatically, and send AI-generated outreach.
+          </p>
+          <div className="flex gap-4 justify-center flex-wrap">
+            <Link
+              href="/sign-up"
+              className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-4 rounded-xl text-lg transition-colors shadow-md hover:shadow-lg"
+            >
+              Start for free →
+            </Link>
+            <Link
+              href="#how-it-works"
+              className="border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold px-8 py-4 rounded-xl text-lg transition-colors shadow-sm"
+            >
+              See how it works
+            </Link>
+          </div>
+          <p className="text-sm text-slate-400 mt-5">10 free searches · No credit card required</p>
+
+          {/* Product mock card */}
+          <div className="mt-16 bg-white rounded-2xl border border-slate-200 shadow-xl p-6 text-left max-w-md mx-auto">
+            <div className="flex items-start justify-between mb-4">
+              <div>
+                <div className="font-semibold text-slate-900">Mike&apos;s Auto Repair</div>
+                <div className="text-sm text-slate-500 mt-0.5">Scottsdale, AZ · Auto Repair</div>
+              </div>
+              <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-600 text-xs font-semibold px-2.5 py-1 rounded-full border border-orange-200 flex-shrink-0">
+                No website
+              </span>
+            </div>
+            <div className="flex items-center gap-4 text-sm text-slate-500">
+              <span>⭐ 4.8 · 312 reviews</span>
+              <span>📞 (480) 555-0192</span>
+            </div>
+            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-2">
+              <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
+              <span className="text-xs text-slate-500">Score: <span className="font-semibold text-slate-700">92</span> · High intent lead</span>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      {/* How it works */}
+      <section id="how-it-works" className="bg-slate-50 py-24 px-6 border-t border-slate-100">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-bold text-slate-900 mb-3">How it works</h2>
+            <p className="text-slate-500">Three steps from search to client</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+            {[
+              { step: '1', title: 'Search', desc: 'Enter any keyword + city, or run a radius search across an entire area.', color: 'bg-blue-600' },
+              { step: '2', title: 'Score', desc: 'Leads are automatically scored by review count, rating, and website status.', color: 'bg-indigo-600' },
+              { step: '3', title: 'Outreach', desc: 'Generate a personalized microsite preview + AI cold outreach in one click.', color: 'bg-violet-600' },
+            ].map(({ step, title, desc, color }) => (
+              <div key={step} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center hover:shadow-md transition-shadow">
+                <div className={`w-12 h-12 ${color} text-white rounded-xl flex items-center justify-center text-xl font-bold mx-auto mb-5`}>
+                  {step}
+                </div>
+                <h3 className="font-semibold text-lg text-slate-900 mb-2">{title}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{desc}</p>
+              </div>
             ))}
-            <span className="text-xs text-gray-400 ml-auto">
-              {radiusMiles <= 25 ? '~7 search points' : '~19 search points'}
-            </span>
-          </div>
-
-          <div className="flex items-center justify-between">
-            <p className="text-xs text-gray-500">
-              Searches multiple grid points within the radius and deduplicates results.
-            </p>
-            <button
-              onClick={handleSearch}
-              disabled={loading || !category.trim() || !baseCity.trim()}
-              className="bg-blue-600 hover:bg-blue-700 text-white px-5 py-2 rounded disabled:opacity-50 transition-colors text-sm font-medium"
-            >
-              {loading ? loadingMessage : 'Search Area'}
-            </button>
           </div>
         </div>
-      )}
+      </section>
 
-      {error && <p className="text-red-600 mb-4">{error}</p>}
-
-      {leads.length > 0 && (
-        <>
-          {/* Dashboard stats */}
-          <div className="grid grid-cols-2 sm:grid-cols-4 gap-3 mb-4">
-            <StatCard label="Total Found" value={stats.total} />
-            <StatCard label="No Website" value={stats.noWebsite} highlight />
-            <StatCard label="High Opportunity" value={stats.highValue} highlight={stats.highValue > 0} />
-            <StatCard label="Avg Reviews" value={stats.avgReviews} />
+      {/* Features */}
+      <section className="py-24 px-6 bg-white border-t border-slate-100">
+        <div className="max-w-4xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-bold text-slate-900 mb-3">Everything you need to find leads</h2>
+            <p className="text-slate-500">All the tools to turn Google Maps into a client pipeline</p>
           </div>
-
-          {/* Radius search metadata */}
-          {searchMeta && (
-            <div className="border rounded-lg p-3 mb-4 bg-indigo-50 border-indigo-200">
-              <div className="flex items-center justify-between mb-2">
-                <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide">
-                  Area Searched — {searchMeta.searchPointsUsed} grid points · {searchMeta.rawResultsFound} raw results
-                </p>
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
+            {[
+              { icon: '📍', title: 'Radius Search', desc: 'Cover entire markets with a grid-based area search up to 50+ miles.', bg: 'bg-blue-50', border: 'border-blue-100' },
+              { icon: '🔥', title: 'Lead Scoring', desc: 'Automatically ranked by review count, rating, and website status.', bg: 'bg-orange-50', border: 'border-orange-100' },
+              { icon: '📧', title: 'Email Enrichment', desc: 'Find owner contact emails via Hunter.io for high-value leads.', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+              { icon: '🤖', title: 'AI Outreach', desc: 'Generate a custom microsite preview and SMS cold outreach message.', bg: 'bg-violet-50', border: 'border-violet-100' },
+              { icon: '📊', title: 'CSV Export', desc: 'Export all filtered leads with full contact and lead data.', bg: 'bg-slate-50', border: 'border-slate-200' },
+              { icon: '🏷️', title: 'Industry Presets', desc: '40+ preset categories across 7 industries for fast searches.', bg: 'bg-amber-50', border: 'border-amber-100' },
+            ].map(({ icon, title, desc, bg, border }) => (
+              <div key={title} className={`${bg} border ${border} rounded-2xl p-6 hover:shadow-sm transition-shadow`}>
+                <div className="text-2xl mb-4">{icon}</div>
+                <h3 className="font-semibold text-slate-900 mb-1.5">{title}</h3>
+                <p className="text-slate-500 text-sm leading-relaxed">{desc}</p>
               </div>
-              <div className="flex flex-wrap gap-1.5">
-                {searchMeta.townsFound.map((town) => (
-                  <button
-                    key={town}
-                    onClick={() => setFilters((f) => ({ ...f, city: town }))}
-                    className="bg-white border border-indigo-200 text-indigo-700 rounded-full px-2.5 py-0.5 text-xs hover:bg-indigo-100 transition-colors"
-                  >
-                    {town}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Top industries */}
-          {stats.topCategories.length > 0 && (
-            <div className="bg-gray-50 border rounded-lg p-3 mb-5">
-              <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                Top Industries Without Websites
-              </p>
-              <div className="flex flex-wrap gap-2">
-                {stats.topCategories.map(([cat, count]) => (
-                  <button
-                    key={cat}
-                    onClick={() => setFilters((f) => ({ ...f, category: cat }))}
-                    className="bg-white border rounded-full px-3 py-1 text-xs hover:bg-blue-50 hover:border-blue-300 transition-colors capitalize"
-                  >
-                    {cat} <span className="text-gray-400">({count})</span>
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Quick filter presets */}
-          <div className="mb-5">
-            <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">Quick Filters</p>
-            <div className="flex flex-wrap gap-2">
-              <button
-                onClick={() => applyPreset({ websiteStatus: 'missing', sort: 'leadScore' })}
-                className="text-xs bg-white border rounded-full px-3 py-1.5 hover:bg-gray-50 transition-colors"
-              >
-                All No-Website Leads
-              </button>
-              <button
-                onClick={() => applyPreset({ websiteStatus: 'missing', minReviews: 20, sort: 'leadScore' })}
-                className="text-xs bg-white border rounded-full px-3 py-1.5 hover:bg-gray-50 transition-colors"
-              >
-                20+ Reviews, No Website
-              </button>
-              <button
-                onClick={() => applyPreset({ websiteStatus: 'missing', minReviews: 50, sort: 'leadScore' })}
-                className="text-xs bg-white border rounded-full px-3 py-1.5 hover:bg-gray-50 transition-colors"
-              >
-                50+ Reviews, No Website
-              </button>
-              <button
-                onClick={() => applyPreset({ websiteStatus: 'missing', minRating: 4.5, sort: 'leadScore' })}
-                className="text-xs bg-white border rounded-full px-3 py-1.5 hover:bg-gray-50 transition-colors"
-              >
-                Highly Rated (4.5+), No Website
-              </button>
-              <button
-                onClick={() => applyPreset({ websiteStatus: 'missing', sort: 'leadScore', topN: 20 })}
-                className="text-xs bg-orange-50 border border-orange-200 text-orange-700 rounded-full px-3 py-1.5 hover:bg-orange-100 transition-colors font-medium"
-              >
-                🏆 Top 20 Opportunities
-              </button>
-              <button
-                onClick={() => applyPreset({ websiteStatus: 'missing_or_broken', sort: 'leadScore' })}
-                className="text-xs bg-white border rounded-full px-3 py-1.5 hover:bg-gray-50 transition-colors"
-              >
-                Missing or Broken Website
-              </button>
-            </div>
+            ))}
           </div>
+        </div>
+      </section>
 
-          {/* Filters panel */}
-          <div className="mb-4">
-            <button
-              onClick={() => setShowFilters((v) => !v)}
-              className="text-sm text-blue-600 hover:text-blue-800 flex items-center gap-1 mb-2"
-            >
-              <span>{showFilters ? '▾' : '▸'}</span>
-              {showFilters ? 'Hide Filters' : 'Show Filters'}
-            </button>
-            {showFilters && (
-              <div className="border rounded-lg p-4 bg-gray-50 grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-                <label className="flex flex-col gap-1">
-                  <span className="font-medium text-gray-700">Min Reviews</span>
-                  <input
-                    type="number"
-                    min={0}
-                    value={filters.minReviews || ''}
-                    onChange={(e) => setFilters((f) => ({ ...f, minReviews: Number(e.target.value) || 0 }))}
-                    placeholder="e.g. 20"
-                    className="border rounded px-2 py-1.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-medium text-gray-700">Min Rating</span>
-                  <select
-                    value={filters.minRating}
-                    onChange={(e) => setFilters((f) => ({ ...f, minRating: Number(e.target.value) }))}
-                    className="border rounded px-2 py-1.5"
-                  >
-                    <option value={0}>Any</option>
-                    <option value={3.0}>3.0+</option>
-                    <option value={3.5}>3.5+</option>
-                    <option value={4.0}>4.0+</option>
-                    <option value={4.2}>4.2+</option>
-                    <option value={4.5}>4.5+</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-medium text-gray-700">Website Status</span>
-                  <select
-                    value={filters.websiteStatus}
-                    onChange={(e) => setFilters((f) => ({ ...f, websiteStatus: e.target.value as WebsiteFilter }))}
-                    className="border rounded px-2 py-1.5"
-                  >
-                    <option value="any">Any</option>
-                    <option value="missing">Missing (no website)</option>
-                    <option value="missing_or_broken">Missing or Broken</option>
-                    <option value="broken">Broken website</option>
-                    <option value="slow">Slow website</option>
-                  </select>
-                </label>
-                <label className="flex flex-col gap-1">
-                  <span className="font-medium text-gray-700">Category</span>
-                  <input
-                    type="text"
-                    value={filters.category}
-                    onChange={(e) => setFilters((f) => ({ ...f, category: e.target.value }))}
-                    placeholder="e.g. plumber"
-                    className="border rounded px-2 py-1.5"
-                  />
-                </label>
-                <label className="flex flex-col gap-1 sm:col-span-2">
-                  <span className="font-medium text-gray-700">City / Area</span>
-                  <input
-                    type="text"
-                    value={filters.city}
-                    onChange={(e) => setFilters((f) => ({ ...f, city: e.target.value }))}
-                    placeholder="e.g. Brooklyn"
-                    className="border rounded px-2 py-1.5"
-                  />
-                </label>
-                <button
-                  onClick={() => { setFilters(DEFAULT_FILTERS); setTopN(null); }}
-                  className="text-xs text-gray-500 underline text-left"
+      {/* Stat strip */}
+      <section className="bg-blue-600 py-14 px-6">
+        <div className="max-w-4xl mx-auto">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-white">
+            {[
+              { stat: '50+', label: 'Industry presets' },
+              { stat: '500', label: 'Searches/month on Pro' },
+              { stat: '1-click', label: 'AI outreach generation' },
+            ].map(({ stat, label }) => (
+              <div key={label}>
+                <div className="text-3xl font-extrabold">{stat}</div>
+                <div className="text-blue-200 text-sm mt-1">{label}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      {/* Pricing */}
+      <section className="bg-slate-50 py-24 px-6 border-t border-slate-100">
+        <div className="max-w-3xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-bold text-slate-900 mb-3">Simple pricing</h2>
+            <p className="text-slate-500">Start free. Upgrade when you need more.</p>
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
+            {/* Free */}
+            <div className="bg-white border border-slate-200 rounded-2xl p-8 shadow-sm space-y-6">
+              <div>
+                <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Free</p>
+                <div className="flex items-end gap-1">
+                  <span className="text-5xl font-extrabold text-slate-900">$0</span>
+                </div>
+                <p className="text-slate-400 text-sm mt-1">forever</p>
+              </div>
+              <ul className="space-y-3 text-sm text-slate-600">
+                {['10 searches/month', 'Single keyword search', 'Lead scoring + filters', 'CSV export'].map((f) => (
+                  <li key={f} className="flex items-center gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 text-xs font-bold flex-shrink-0">✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <Link
+                href="/sign-up"
+                className="block text-center border border-slate-200 hover:border-slate-300 bg-slate-50 hover:bg-slate-100 text-slate-700 font-semibold px-4 py-3 rounded-xl transition-colors"
+              >
+                Get started free
+              </Link>
+            </div>
+
+            {/* Pro */}
+            <div className="relative bg-blue-600 text-white rounded-2xl p-8 shadow-lg space-y-6">
+              <div className="absolute -top-3.5 left-1/2 -translate-x-1/2">
+                <span className="bg-emerald-500 text-white text-xs font-bold px-3 py-1 rounded-full shadow-sm">
+                  Most Popular
+                </span>
+              </div>
+              <div>
+                <p className="text-xs font-semibold text-blue-200 uppercase tracking-widest mb-3">Pro</p>
+                <div className="flex items-end gap-1">
+                  <span className="text-5xl font-extrabold">$29</span>
+                  <span className="text-blue-200 text-sm mb-2">/month</span>
+                </div>
+                <p className="text-blue-200 text-sm mt-1">Billed monthly · Cancel anytime</p>
+              </div>
+              <ul className="space-y-3 text-sm text-blue-100">
+                {[
+                  '500 searches/month',
+                  'Radius search (any area)',
+                  'Email enrichment',
+                  'AI outreach generation',
+                  'CSV export',
+                ].map((f) => (
+                  <li key={f} className="flex items-center gap-2.5">
+                    <span className="w-5 h-5 rounded-full bg-blue-500 border border-blue-400 flex items-center justify-center text-white text-xs font-bold flex-shrink-0">✓</span>
+                    {f}
+                  </li>
+                ))}
+              </ul>
+              <SignedOut>
+                <Link
+                  href="/sign-up"
+                  className="block text-center bg-white text-blue-600 hover:bg-blue-50 font-semibold px-4 py-3 rounded-xl transition-colors shadow-sm"
                 >
-                  Reset filters
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Sort bar + export */}
-          <div className="flex flex-wrap items-center gap-3 py-3 border-y mb-4">
-            <div className="flex items-center gap-2 text-sm">
-              <label className="font-medium text-gray-700">Sort:</label>
-              <select
-                value={sortKey}
-                onChange={(e) => setSortKey(e.target.value as SortKey)}
-                className="border rounded px-2 py-1"
-              >
-                <option value="leadScore">Lead Score</option>
-                <option value="reviewCount">Review Count</option>
-                <option value="rating">Rating</option>
-                <option value="name">Name</option>
-              </select>
+                  Get started
+                </Link>
+              </SignedOut>
+              <SignedIn>
+                <UpgradeButton className="w-full bg-white text-blue-600 hover:bg-blue-50 font-semibold px-4 py-3 rounded-xl transition-colors shadow-sm" />
+              </SignedIn>
             </div>
-            <span className="text-sm text-gray-500">
-              {sorted.length} lead{sorted.length !== 1 ? 's' : ''}{topN ? ` (top ${topN})` : ''}
+          </div>
+        </div>
+      </section>
+
+      {/* Dark CTA */}
+      <section className="bg-slate-900 py-20 px-6">
+        <div className="max-w-2xl mx-auto text-center">
+          <h2 className="text-3xl font-bold text-white mb-4">
+            Your next 10 clients are on Google Maps
+          </h2>
+          <p className="text-slate-400 mb-8 leading-relaxed">
+            They just don&apos;t have a website yet. Start finding them today — free, no credit card needed.
+          </p>
+          <Link
+            href="/sign-up"
+            className="inline-block bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl text-lg transition-colors shadow-lg"
+          >
+            Start free — 10 searches on us
+          </Link>
+        </div>
+      </section>
+
+      {/* Footer */}
+      <footer className="bg-slate-900 border-t border-slate-800 py-8 px-6">
+        <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm">
+          <div className="flex items-center gap-2">
+            <span className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center flex-shrink-0">
+              <svg className="w-3.5 h-3.5 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
+              </svg>
             </span>
-            <button
-              onClick={() => exportCSV(sorted)}
-              className="ml-auto bg-green-600 hover:bg-green-700 text-white px-3 py-1.5 rounded text-sm transition-colors"
-            >
-              Export CSV
-            </button>
+            <span className="text-slate-300 font-medium">No-Site Finder</span>
           </div>
-
-          {sorted.length === 0 && (
-            <p className="text-gray-500 text-sm text-center py-8">
-              No leads match your current filters. Try adjusting the criteria above.
-            </p>
-          )}
-
-          {/* Lead cards */}
-          <ul className="space-y-3">
-            {sorted.map((lead) => {
-              const badge = getScoreBadge(lead.leadScore, lead.hasWebsite);
-              const isHighValue = lead.leadScore >= HIGH_VALUE_SCORE && !lead.hasWebsite;
-              return (
-                <li
-                  key={lead.placeId}
-                  className={`border rounded-lg p-4 bg-white shadow-sm ${
-                    isHighValue ? 'border-red-200 ring-1 ring-red-100' : ''
-                  }`}
-                >
-                  {/* Header */}
-                  <div className="flex items-start justify-between gap-3 mb-3">
-                    <div className="min-w-0">
-                      <h2 className="font-semibold text-base leading-snug">{lead.name}</h2>
-                      <p className="text-gray-500 text-xs mt-0.5 capitalize">
-                        {lead.category.split(',')[0].trim()}
-                      </p>
-                    </div>
-                    <div className="flex items-center gap-2 shrink-0 flex-wrap justify-end">
-                      {lead.businessStatus === 'CLOSED_PERMANENTLY' && (
-                        <span className="text-xs bg-gray-100 text-gray-500 border px-2 py-0.5 rounded-full">
-                          Closed
-                        </span>
-                      )}
-                      <span className={`text-xs font-semibold px-2 py-0.5 rounded-full ${badge.className}`}>
-                        {badge.label}
-                      </span>
-                      <span className="text-xs text-gray-400 font-mono">Score: {lead.leadScore}</span>
-                    </div>
-                  </div>
-
-                  {/* Detail grid */}
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-y-1.5 gap-x-6 text-sm mb-3">
-                    <p className="text-gray-700 truncate">{lead.address}</p>
-
-                    <div className="flex items-center gap-2">
-                      <span className="text-gray-700">{lead.phone}</span>
-                      {lead.phone !== 'N/A' && (
-                        <button
-                          onClick={() => copyPhone(lead.phone)}
-                          className="text-blue-500 text-xs border border-blue-300 rounded px-1.5 py-0.5 hover:bg-blue-50 transition-colors"
-                        >
-                          {copiedPhone === lead.phone ? '✓ Copied' : 'Copy'}
-                        </button>
-                      )}
-                    </div>
-
-                    {lead.rating !== null ? (
-                      <p className="text-gray-700">
-                        ⭐ {lead.rating.toFixed(1)}
-                        <span className="text-gray-400 ml-1">({lead.reviewCount?.toLocaleString()} reviews)</span>
-                      </p>
-                    ) : (
-                      <p className="text-gray-400 text-xs">No rating data</p>
-                    )}
-
-                    <div>
-                      {lead.hasWebsite ? (
-                        <span className="flex items-center gap-1.5 flex-wrap">
-                          <a
-                            href={lead.website!}
-                            target="_blank"
-                            rel="noreferrer"
-                            className="text-blue-600 underline text-xs truncate max-w-[180px] inline-block"
-                          >
-                            {lead.website}
-                          </a>
-                          {lead.websiteStatus === 'broken' && (
-                            <span className="text-red-600 text-xs font-semibold bg-red-50 border border-red-200 px-1 rounded">
-                              BROKEN
-                            </span>
-                          )}
-                          {lead.websiteStatus === 'slow' && (
-                            <span className="text-yellow-600 text-xs font-semibold bg-yellow-50 border border-yellow-200 px-1 rounded">
-                              SLOW
-                            </span>
-                          )}
-                          {lead.websiteStatus === 'ok' && (
-                            <span className="text-green-600 text-xs">✓ OK</span>
-                          )}
-                        </span>
-                      ) : (
-                        <span className="text-orange-600 font-medium text-sm">No website</span>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Quick action panel */}
-                  <div className="flex flex-wrap items-center gap-2 pt-2 border-t text-xs">
-                    {lead.phone !== 'N/A' && (
-                      <button
-                        onClick={() => copyPhone(lead.phone)}
-                        className="bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2 py-1 rounded transition-colors font-medium"
-                      >
-                        {copiedPhone === lead.phone ? '✓ Copied' : '📋 Copy Phone'}
-                      </button>
-                    )}
-                    <a
-                      href={lead.mapsUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded transition-colors"
-                    >
-                      Open in Maps
-                    </a>
-                    <a
-                      href={lead.profileUrl}
-                      target="_blank"
-                      rel="noreferrer"
-                      className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded transition-colors"
-                    >
-                      Business Profile
-                    </a>
-                    <button
-                      onClick={() => exportCSV([lead], `${lead.name.replace(/[^a-z0-9]/gi, '_')}.csv`)}
-                      className="bg-gray-100 hover:bg-gray-200 px-2 py-1 rounded transition-colors"
-                    >
-                      Export Lead
-                    </button>
-                    <span className="text-gray-400 ml-auto font-mono truncate">ID: {lead.placeId}</span>
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </>
-      )}
-    </main>
+          <p className="text-slate-500">Built for web designers and agencies</p>
+        </div>
+      </footer>
+    </div>
   );
 }

@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 // ─── Geography helpers ────────────────────────────────────────────────────────
 
@@ -75,6 +76,9 @@ async function geocodeCity(
   const url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(city)}&key=${apiKey}`;
   const res = await fetch(url);
   const data = await res.json();
+  if (!data.results?.[0]) {
+    console.error('[geocodeCity] Google API status:', data.status, '| error_message:', data.error_message ?? 'none');
+  }
   return data.results?.[0]?.geometry?.location ?? null;
 }
 
@@ -95,18 +99,34 @@ function extractCity(address: string): string {
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
+  let usage;
+  try {
+    usage = await checkAndIncrementUsage();
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!usage.allowed) {
+    return NextResponse.json(
+      { error: 'LIMIT_REACHED', message: "You've hit your free search limit", upgrade_required: true, usage },
+      { status: 402 }
+    );
+  }
+
   const { category, baseCity, radiusMiles } = await req.json();
   const apiKey = process.env.GOOGLE_API_KEY;
 
   if (!apiKey) return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
-  if (!category?.trim() || !baseCity?.trim() || !radiusMiles) {
-    return NextResponse.json({ error: 'category, baseCity, and radiusMiles are required' }, { status: 400 });
-  }
+  if (!category?.trim()) return NextResponse.json({ error: 'category is required' }, { status: 400 });
+  if (!baseCity?.trim()) return NextResponse.json({ error: 'baseCity is required' }, { status: 400 });
+  if (!radiusMiles) return NextResponse.json({ error: 'radiusMiles is required' }, { status: 400 });
 
   // Step 1: Geocode the base city
   const center = await geocodeCity(baseCity, apiKey);
   if (!center) {
-    return NextResponse.json({ error: `Could not geocode: "${baseCity}"` }, { status: 400 });
+    return NextResponse.json(
+      { error: `Could not geocode "${baseCity}". Check server logs for the Google API status (likely REQUEST_DENIED or billing not enabled).` },
+      { status: 400 }
+    );
   }
 
   // Step 2: Generate search grid
@@ -163,5 +183,6 @@ export async function POST(req: Request) {
       rawResultsFound: allPlaceIds.length,
       townsFound: towns,
     },
+    usage,
   });
 }

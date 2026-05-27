@@ -1,7 +1,21 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
+import { checkAndIncrementUsage } from '@/lib/usage';
 
 export async function POST(req: Request) {
+  let usage;
+  try {
+    usage = await checkAndIncrementUsage();
+  } catch {
+    return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+  }
+  if (!usage.allowed) {
+    return NextResponse.json(
+      { error: 'LIMIT_REACHED', message: "You've hit your free search limit", upgrade_required: true, usage },
+      { status: 402 }
+    );
+  }
+
   const { query } = await req.json();
   const apiKey = process.env.GOOGLE_API_KEY;
 
@@ -35,5 +49,5 @@ export async function POST(req: Request) {
   // Step 2: Fetch details + website checks for all unique places
   const businesses = await processBatch(placeIds, apiKey);
 
-  return NextResponse.json({ businesses });
+  return NextResponse.json({ businesses, usage });
 }
