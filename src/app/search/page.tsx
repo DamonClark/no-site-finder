@@ -50,7 +50,7 @@ const DEFAULT_FILTERS: Filters = {
   city: '',
 };
 
-const RADIUS_OPTIONS = [10, 25] as const;
+const RADIUS_OPTIONS = [10, 25, 50] as const;
 
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
@@ -179,6 +179,7 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [searchPerformed, setSearchPerformed] = useState(false);
+  const [fromCache, setFromCache] = useState(false);
 
   const [enriching, setEnriching] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
@@ -217,6 +218,7 @@ export default function Home() {
     setLeads([]);
     setSearchMeta(null);
     setTopN(null);
+    setFromCache(false);
     try {
       const res = await fetch('/api/search', {
         method: 'POST',
@@ -230,6 +232,7 @@ export default function Home() {
       } else if (res.ok) {
         setLeads(data.businesses ?? []);
         if (data.usage) setUsage(data.usage);
+        setFromCache(!!data.fromCache);
         setRecentQueryList(recentSearches.saveQuery(query));
         setSearchPerformed(true);
       } else {
@@ -249,6 +252,7 @@ export default function Home() {
     setLeads([]);
     setSearchMeta(null);
     setTopN(null);
+    setFromCache(false);
     try {
       const res = await fetch('/api/search-radius', {
         method: 'POST',
@@ -263,6 +267,7 @@ export default function Home() {
         setLeads(data.businesses ?? []);
         setSearchMeta(data.meta ?? null);
         if (data.usage) setUsage(data.usage);
+        setFromCache(!!data.fromCache);
         setRecentCatList(recentSearches.saveCategory(category));
         setSearchPerformed(true);
       } else {
@@ -420,6 +425,12 @@ export default function Home() {
           </div>
         )}
 
+        {fromCache && (
+          <div className="bg-blue-50 border border-blue-200 text-blue-700 text-sm rounded-xl px-4 py-2 flex items-center gap-2">
+            ⚡ Results loaded from cache · Refreshed within 48 hours
+          </div>
+        )}
+
         {/* Search card */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
 
@@ -517,7 +528,7 @@ export default function Home() {
                   </button>
                 ))}
                 <span className="text-xs text-slate-400 ml-auto">
-                  ~7 search points
+                  {radiusMiles <= 25 ? '~7 search points' : '~19 search points'}
                 </span>
               </div>
 

@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { makeKeywordCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
 
 export async function POST(req: Request) {
   let usage;
@@ -26,6 +27,18 @@ export async function POST(req: Request) {
 
   if (!apiKey) {
     return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
+  }
+
+  // Check cache before making any Google API calls (non-fatal if DB is unavailable)
+  const cacheKey = makeKeywordCacheKey(query);
+  let cached = null;
+  try {
+    cached = await getCachedSearch(cacheKey);
+  } catch (e) {
+    console.error('[search] cache read failed:', e);
+  }
+  if (cached) {
+    return NextResponse.json({ businesses: cached.results, usage, fromCache: true });
   }
 
   // Step 1: Collect place IDs from up to 3 pages of Text Search.
@@ -92,6 +105,11 @@ export async function POST(req: Request) {
 
   // Step 3: Fetch details + website checks for all unique places (capped at 80)
   const businesses = await processBatch(placeIds.slice(0, 80), apiKey);
+
+  // Store in cache for future searches (non-blocking — don't await)
+  setCachedSearch(cacheKey, businesses).catch((e) =>
+    console.error('[search] cache write failed:', e)
+  );
 
   return NextResponse.json({ businesses, usage });
 }

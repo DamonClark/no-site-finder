@@ -1,6 +1,7 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
 import { checkAndIncrementUsage } from '@/lib/usage';
+import { makeRadiusCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
 
 // ─── Geography helpers ────────────────────────────────────────────────────────
 
@@ -120,13 +121,25 @@ export async function POST(req: Request) {
   const { category, baseCity, radiusMiles: rawRadius } = await req.json();
   // Hard cap at 25 miles — beyond that the grid grows to 19 points and Place Details
   // calls can reach 200+, costing $3-7 per search at Google API rates.
-  const radiusMiles = Math.min(Number(rawRadius) || 10, 25);
+  const radiusMiles = Math.min(Number(rawRadius) || 10, 50);
   const apiKey = process.env.GOOGLE_API_KEY;
 
   if (!apiKey) return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
   if (!category?.trim()) return NextResponse.json({ error: 'category is required' }, { status: 400 });
   if (!baseCity?.trim()) return NextResponse.json({ error: 'baseCity is required' }, { status: 400 });
   if (!rawRadius) return NextResponse.json({ error: 'radiusMiles is required' }, { status: 400 });
+
+  // Check cache before making any Google API calls (non-fatal if DB is unavailable)
+  const cacheKey = makeRadiusCacheKey(category, baseCity, radiusMiles);
+  let cached = null;
+  try {
+    cached = await getCachedSearch(cacheKey);
+  } catch (e) {
+    console.error('[search-radius] cache read failed:', e);
+  }
+  if (cached) {
+    return NextResponse.json({ businesses: cached.results, meta: cached.meta, usage, fromCache: true });
+  }
 
   // Step 1: Geocode the base city
   const center = await geocodeCity(baseCity, apiKey);
@@ -219,13 +232,16 @@ export async function POST(req: Request) {
     ),
   ].sort();
 
-  return NextResponse.json({
-    businesses,
-    meta: {
-      searchPointsUsed: searchPoints.length,
-      rawResultsFound: allPlaceIds.length,
-      townsFound: towns,
-    },
-    usage,
-  });
+  const meta = {
+    searchPointsUsed: searchPoints.length,
+    rawResultsFound: allPlaceIds.length,
+    townsFound: towns,
+  };
+
+  // Store in cache for future searches (non-blocking)
+  setCachedSearch(cacheKey, businesses, meta).catch((e) =>
+    console.error('[search-radius] cache write failed:', e)
+  );
+
+  return NextResponse.json({ businesses, meta, usage });
 }
