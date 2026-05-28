@@ -14,16 +14,28 @@ export function computeLeadScore(
   return 0;
 }
 
+function normalizeUrl(url: string): string {
+  if (!/^https?:\/\//i.test(url)) return 'https://' + url;
+  return url;
+}
+
 export async function checkWebsite(url: string): Promise<'ok' | 'broken' | 'slow'> {
+  const normalized = normalizeUrl(url);
   try {
     const start = Date.now();
-    const res = await fetch(url, {
+    let res = await fetch(normalized, {
       method: 'HEAD',
-      signal: AbortSignal.timeout(5000),
+      signal: AbortSignal.timeout(6000),
     });
+    if (res.status === 405 || res.status === 501) {
+      res = await fetch(normalized, {
+        method: 'GET',
+        signal: AbortSignal.timeout(6000),
+      });
+    }
     const elapsed = Date.now() - start;
     if (!res.ok) return 'broken';
-    if (elapsed > 3000) return 'slow';
+    if (elapsed > 4000) return 'slow';
     return 'ok';
   } catch {
     return 'broken';
@@ -79,7 +91,7 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
 
     const placeId = placeIds[i];
     const hasWebsite = !!result.website;
-    const website: string | null = result.website ?? null;
+    const website: string | null = result.website ? normalizeUrl(result.website) : null;
     const websiteStatus = websiteStatuses[i];
 
     const types: string[] = result.types ?? [];

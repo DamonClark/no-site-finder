@@ -41,65 +41,75 @@ export async function POST(req: Request) {
     return NextResponse.json({ businesses: cached.results, usage, fromCache: true });
   }
 
-  // Step 1: Collect place IDs from up to 3 pages of Text Search.
-  // Also capture the city center from the first result's geometry so we can
-  // run a supplemental Nearby Search that surfaces lower-visibility local businesses.
-  const placeIds: string[] = [];
+  function extractKeyword(q: string): string {
+    return q.split(/\s+in\s+/i)[0].trim();
+  }
+
+  function buildVariantQuery(q: string): string {
+    const keyword = extractKeyword(q).replace(/s$/, '');
+    const city = q.split(/\s+in\s+/i)[1]?.trim() ?? '';
+    return city ? `${keyword} ${city}` : keyword;
+  }
+
   const seenIds = new Set<string>();
+  const placeIds: string[] = [];
   let cityCenter: { lat: number; lng: number } | null = null;
 
-  let url = `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`;
-  let pageCount = 0;
+  // Run three search streams in parallel:
+  // 1. Text Search original query (page 1 + optional page 2)
+  // 2. Text Search variant query (page 1 only)
+  // 3. Nearby Search (fired after we have a city center from stream 1)
+  const variantQuery = buildVariantQuery(query);
 
-  do {
-    const searchRes = await fetch(url);
-    const searchData = await searchRes.json();
-    if (!searchData.results) break;
+  const [textData1, textDataVariant] = await Promise.all([
+    fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(query)}&key=${apiKey}`)
+      .then((r) => r.json())
+      .catch(() => ({ results: [] })),
+    fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(variantQuery)}&key=${apiKey}`)
+      .then((r) => r.json())
+      .catch(() => ({ results: [] })),
+  ]);
 
-    for (const place of searchData.results) {
-      if (!seenIds.has(place.place_id)) {
-        seenIds.add(place.place_id);
-        placeIds.push(place.place_id);
-        if (!cityCenter && place.geometry?.location) {
-          cityCenter = place.geometry.location;
-        }
+  // Merge results from both text searches
+  for (const place of [...(textData1.results ?? []), ...(textDataVariant.results ?? [])]) {
+    if (!seenIds.has(place.place_id)) {
+      seenIds.add(place.place_id);
+      placeIds.push(place.place_id);
+      if (!cityCenter && place.geometry?.location) {
+        cityCenter = place.geometry.location;
       }
     }
+  }
 
-    pageCount++;
-    if (searchData.next_page_token && pageCount < 3) {
-      await new Promise((r) => setTimeout(r, 2000)); // wait for token to activate
-      url = `https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${searchData.next_page_token}&key=${apiKey}`;
-    } else {
-      break;
-    }
-  } while (true);
+  // Fetch page 2 of the original query and Nearby Search in parallel
+  const page2Promise = textData1.next_page_token
+    ? new Promise((r) => setTimeout(r, 2000)).then(() =>
+        fetch(`https://maps.googleapis.com/maps/api/place/textsearch/json?pagetoken=${encodeURIComponent(textData1.next_page_token)}&key=${apiKey}`)
+          .then((r) => r.json())
+          .catch(() => ({ results: [] }))
+      )
+    : Promise.resolve({ results: [] });
 
-  // Step 2: Supplemental Nearby Search around the city center (1 extra API call).
-  // Text Search returns results ordered by prominence (established businesses with websites).
-  // Nearby Search orders by distance, surfacing more local and lower-profile businesses
-  // that are more likely to lack a website.
-  if (cityCenter) {
-    const keyword = query.split(/\s+in\s+/i)[0].trim() || query;
-    const nearbyUrl = [
-      'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
-      `?location=${cityCenter.lat},${cityCenter.lng}`,
-      `&radius=20000`,
-      `&keyword=${encodeURIComponent(keyword)}`,
-      `&key=${apiKey}`,
-    ].join('');
+  const nearbyPromise = cityCenter
+    ? fetch(
+        [
+          'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+          `?location=${cityCenter.lat},${cityCenter.lng}`,
+          `&radius=20000`,
+          `&keyword=${encodeURIComponent(extractKeyword(query) || query)}`,
+          `&key=${apiKey}`,
+        ].join('')
+      )
+        .then((r) => r.json())
+        .catch(() => ({ results: [] }))
+    : Promise.resolve({ results: [] });
 
-    try {
-      const nearbyRes = await fetch(nearbyUrl);
-      const nearbyData = await nearbyRes.json();
-      for (const place of nearbyData.results ?? []) {
-        if (!seenIds.has(place.place_id)) {
-          seenIds.add(place.place_id);
-          placeIds.push(place.place_id);
-        }
-      }
-    } catch {
-      // Non-fatal — proceed with text search results only
+  const [page2Data, nearbyData] = await Promise.all([page2Promise, nearbyPromise]);
+
+  for (const place of [...(page2Data.results ?? []), ...(nearbyData.results ?? [])]) {
+    if (!seenIds.has(place.place_id)) {
+      seenIds.add(place.place_id);
+      placeIds.push(place.place_id);
     }
   }
 

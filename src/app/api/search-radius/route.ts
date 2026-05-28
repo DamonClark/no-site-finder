@@ -153,6 +153,14 @@ export async function POST(req: Request) {
   // Step 2: Generate search grid
   const searchPoints = generateSearchPoints(center.lat, center.lng, radiusMiles);
 
+  // Fire a Text Search for "category in baseCity" in parallel with the grid loop.
+  // Nearby Search biases by distance; Text Search biases by prominence — together they surface more leads.
+  const textSearchPromise = fetch(
+    `https://maps.googleapis.com/maps/api/place/textsearch/json?query=${encodeURIComponent(`${category} in ${baseCity}`)}&key=${apiKey}`
+  )
+    .then((r) => r.json())
+    .catch(() => ({ results: [] }));
+
   // Step 3: Run Nearby Search at every grid point, deduplicate by place_id.
   // Collect next_page_tokens so we can fetch page 2 for all points in one parallel
   // batch after a single 2-second wait (vs 2s × N sequential waits).
@@ -219,8 +227,17 @@ export async function POST(req: Request) {
     nextPageTokens = page3Tokens;
   }
 
+  // Merge Text Search supplement results (fired in parallel with the grid loop)
+  const textData = await textSearchPromise;
+  for (const place of textData.results ?? []) {
+    if (!seenPlaceIds.has(place.place_id)) {
+      seenPlaceIds.add(place.place_id);
+      allPlaceIds.push(place.place_id);
+    }
+  }
+
   // Step 4: Fetch Place Details + website health checks (shared utility)
-  // Cap at 100 to keep Place Details spend bounded (~$1.70 max).
+  // Cap at 100 to keep Place Details spend bounded (~$2.50 max).
   const businesses = await processBatch(allPlaceIds.slice(0, 100), apiKey);
 
   // Step 5: Derive towns list from result addresses
