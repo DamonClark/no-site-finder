@@ -45,7 +45,7 @@ const HIGH_VALUE_SCORE = 200;
 const DEFAULT_FILTERS: Filters = {
   minReviews: 0,
   minRating: 0,
-  websiteStatus: 'missing_or_broken',
+  websiteStatus: 'missing',
   category: '',
   city: '',
 };
@@ -374,7 +374,7 @@ export default function Home() {
   );
 
   const stats = useMemo(() => {
-    const noWebsite = leads.filter((b) => !b.hasWebsite || b.websiteStatus === 'broken');
+    const noWebsite = leads.filter((b) => !b.hasWebsite);
     const highValue = noWebsite.filter((b) => b.leadScore >= HIGH_VALUE_SCORE);
     const avgReviews = noWebsite.length
       ? Math.round(noWebsite.reduce((s, b) => s + (b.reviewCount ?? 0), 0) / noWebsite.length)
@@ -565,7 +565,7 @@ export default function Home() {
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard icon="📍" label="Total Found" value={stats.total} />
-              <StatCard icon="🚫" label="No/Broken Site" value={stats.noWebsite} highlight />
+              <StatCard icon="🚫" label="No Website" value={stats.noWebsite} highlight />
               <StatCard icon="🔥" label="High Opportunity" value={stats.highValue} highlight={stats.highValue > 0} />
               <StatCard icon="⭐" label="Avg Reviews" value={stats.avgReviews} />
             </div>
