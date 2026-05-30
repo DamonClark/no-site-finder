@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
 import { checkAndIncrementUsage } from '@/lib/usage';
-import { makeRadiusCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
+// import { makeRadiusCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
 
 // ─── Geography helpers ────────────────────────────────────────────────────────
 
@@ -129,17 +129,10 @@ export async function POST(req: Request) {
   if (!baseCity?.trim()) return NextResponse.json({ error: 'baseCity is required' }, { status: 400 });
   if (!rawRadius) return NextResponse.json({ error: 'radiusMiles is required' }, { status: 400 });
 
-  // Check cache before making any Google API calls (non-fatal if DB is unavailable)
-  const cacheKey = makeRadiusCacheKey(category, baseCity, radiusMiles);
-  let cached = null;
-  try {
-    cached = await getCachedSearch(cacheKey);
-  } catch (e) {
-    console.error('[search-radius] cache read failed:', e);
-  }
-  if (cached) {
-    return NextResponse.json({ businesses: cached.results, meta: cached.meta, usage, fromCache: true });
-  }
+  // Cache disabled while usage is low — re-enable (and bump CACHE_VERSION) when traffic grows
+  // const cacheKey = makeRadiusCacheKey(category, baseCity, radiusMiles);
+  // const cached = await getCachedSearch(cacheKey).catch(() => null);
+  // if (cached) return NextResponse.json({ businesses: cached.results, meta: cached.meta, usage, fromCache: true });
 
   // Step 1: Geocode the base city
   const center = await geocodeCity(baseCity, apiKey);
@@ -255,10 +248,8 @@ export async function POST(req: Request) {
     townsFound: towns,
   };
 
-  // Store in cache for future searches (non-blocking)
-  setCachedSearch(cacheKey, businesses, meta).catch((e) =>
-    console.error('[search-radius] cache write failed:', e)
-  );
+  // Cache write disabled — re-enable alongside cache read above when traffic grows
+  // setCachedSearch(cacheKey, businesses, meta).catch((e) => console.error('[search-radius] cache write failed:', e));
 
   return NextResponse.json({ businesses, meta, usage });
 }

@@ -2,6 +2,24 @@ import type { Business } from '@/types';
 
 export type { Business };
 
+// Businesses that only have a social/directory listing instead of a real website are still leads
+const SOCIAL_DIRECTORY_DOMAINS = [
+  'facebook.com', 'instagram.com', 'twitter.com', 'x.com',
+  'yelp.com', 'linkedin.com', 'nextdoor.com',
+  'thumbtack.com', 'angi.com', 'angieslist.com',
+  'homeadvisor.com', 'houzz.com', 'bbb.org', 'manta.com',
+  'yellowpages.com', 'superpages.com',
+];
+
+function isSocialOrDirectory(url: string): boolean {
+  try {
+    const hostname = new URL(url).hostname.toLowerCase().replace(/^www\./, '');
+    return SOCIAL_DIRECTORY_DOMAINS.some((d) => hostname === d || hostname.endsWith('.' + d));
+  } catch {
+    return false;
+  }
+}
+
 export function computeLeadScore(
   rating: number | null,
   reviewCount: number | null,
@@ -90,9 +108,11 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
     if (!result) continue;
 
     const placeId = placeIds[i];
-    const hasWebsite = !!result.website;
-    const website: string | null = result.website ? normalizeUrl(result.website) : null;
-    const websiteStatus = websiteStatuses[i];
+    const rawWebsite: string | null = result.website ? normalizeUrl(result.website) : null;
+    const socialOnly = rawWebsite ? isSocialOrDirectory(rawWebsite) : false;
+    const hasWebsite = !!rawWebsite && !socialOnly;
+    const website = rawWebsite;
+    const websiteStatus: Business['websiteStatus'] = socialOnly ? 'none' : websiteStatuses[i];
 
     const types: string[] = result.types ?? [];
     const category =

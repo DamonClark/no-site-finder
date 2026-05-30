@@ -3,12 +3,15 @@ import type { Business } from '@/types';
 
 const TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
 
+// Bump this when search logic changes to invalidate all existing cached results
+const CACHE_VERSION = 'v2';
+
 export function makeKeywordCacheKey(query: string) {
-  return `kw:${query.trim().toLowerCase()}`;
+  return `${CACHE_VERSION}:kw:${query.trim().toLowerCase()}`;
 }
 
 export function makeRadiusCacheKey(category: string, baseCity: string, radiusMiles: number) {
-  return `r:${category.trim().toLowerCase()}:${baseCity.trim().toLowerCase()}:${radiusMiles}`;
+  return `${CACHE_VERSION}:r:${category.trim().toLowerCase()}:${baseCity.trim().toLowerCase()}:${radiusMiles}`;
 }
 
 export async function getCachedSearch(cacheKey: string) {
