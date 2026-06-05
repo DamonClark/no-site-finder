@@ -87,6 +87,19 @@ export async function POST(req: NextRequest) {
         });
         break;
       }
+
+      case 'invoice.paid': {
+        const invoice = event.data.object as Stripe.Invoice;
+        const sub = invoice.parent?.subscription_details?.subscription;
+        const subId = typeof sub === 'string' ? sub : sub?.id;
+        if (!subId) break;
+        // Reset search count at the start of each new billing period
+        await prisma.user.updateMany({
+          where: { stripeSubscriptionId: subId },
+          data: { searchCount: 0 },
+        });
+        break;
+      }
     }
   } catch (err) {
     console.error('[stripe-webhook] handler error', err);
