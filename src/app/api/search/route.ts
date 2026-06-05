@@ -1,7 +1,7 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
 import { checkAndIncrementUsage } from '@/lib/usage';
-// import { makeKeywordCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
+import { makeKeywordCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
 
 // Common trade/service synonyms to broaden search coverage beyond prominent businesses
 const SYNONYM_MAP: Record<string, string[]> = {
@@ -43,10 +43,9 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
   }
 
-  // Cache disabled while usage is low — re-enable (and bump CACHE_VERSION) when traffic grows
-  // const cacheKey = makeKeywordCacheKey(query);
-  // const cached = await getCachedSearch(cacheKey).catch(() => null);
-  // if (cached) return NextResponse.json({ businesses: cached.results, usage, fromCache: true });
+  const cacheKey = makeKeywordCacheKey(query);
+  const cached = await getCachedSearch(cacheKey).catch(() => null);
+  if (cached) return NextResponse.json({ businesses: cached.results, usage, fromCache: true });
 
   function extractKeyword(q: string): string {
     return q.split(/\s+in\s+/i)[0].trim();
@@ -197,8 +196,7 @@ export async function POST(req: Request) {
   const noWebsiteCount = businesses.filter((b) => !b.hasWebsite).length;
   console.log(`[search] "${query}" → ${businesses.length} businesses, ${noWebsiteCount} no-website leads`);
 
-  // Cache write disabled — re-enable alongside cache read above when traffic grows
-  // setCachedSearch(cacheKey, businesses).catch((e) => console.error('[search] cache write failed:', e));
+  setCachedSearch(cacheKey, businesses).catch((e) => console.error('[search] cache write failed:', e));
 
   return NextResponse.json({ businesses, usage });
 }

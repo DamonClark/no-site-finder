@@ -6,6 +6,7 @@ import type { Business } from '@/types';
 import { INDUSTRY_GROUPS, recentSearches } from '@/lib/industry-presets';
 import { UsageBar } from '@/components/UsageBar';
 import { PaywallModal } from '@/components/PaywallModal';
+import { UpgradeButton } from '@/components/UpgradeButton';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -404,12 +405,22 @@ export default function Home() {
           <div className="flex items-center gap-2">
             <span className="font-bold text-slate-900 text-lg tracking-tight">No-Site Finder</span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-3">
             {usage && (
               <UsageBar
                 searchCount={usage.searchCount}
                 searchLimit={usage.searchLimit}
                 plan={usage.plan}
+              />
+            )}
+            {usage && usage.plan !== 'pro' && (
+              <UpgradeButton
+                label={usage.searchCount >= usage.searchLimit ? 'Upgrade to Search More' : 'Upgrade'}
+                className={
+                  usage.searchCount >= usage.searchLimit
+                    ? 'bg-red-500 hover:bg-red-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap'
+                    : 'bg-blue-600 hover:bg-blue-700 text-white text-xs font-semibold px-3 py-1.5 rounded-lg transition-colors whitespace-nowrap'
+                }
               />
             )}
             <UserButton />
