@@ -1,3 +1,11 @@
+export type WebsitePlatform = 'wordpress' | 'wix' | 'squarespace' | 'webflow' | 'shopify' | 'unknown';
+
+export interface WebsiteIntelligence {
+  platform: { platform: WebsitePlatform; confidence: number };
+  age: { estimated_launch_year: number | null; confidence: number };
+  outdated: { is_outdated: boolean; reasons: string[] };
+}
+
 export interface Business {
   placeId: string;
   name: string;
@@ -18,4 +26,6 @@ export interface Business {
   emailSource: 'hunter' | null;
   ownerName: string | null;
   enriched: boolean;
+  // Website intelligence (populated during batch processing)
+  websiteIntelligence?: WebsiteIntelligence | null;
 }

@@ -16,14 +16,14 @@ export function PaywallModal({ onClose }: PaywallModalProps) {
             You&apos;ve used all 10 free searches
           </h2>
           <p className="text-gray-500">
-            Upgrade to Pro for 500 searches/month and unlock unlimited lead finding.
+            Upgrade to Pro for 150 searches/month and unlock unlimited lead finding.
           </p>
         </div>
 
         <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 space-y-2">
           <p className="font-semibold text-blue-900">Pro Plan — $29/month</p>
           <ul className="text-sm text-blue-700 space-y-1">
-            <li>✓ 500 searches per month</li>
+            <li>✓ 150 searches per month</li>
             <li>✓ Radius search across any area</li>
             <li>✓ Email enrichment + AI outreach</li>
             <li>✓ CSV export</li>

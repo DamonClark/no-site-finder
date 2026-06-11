@@ -153,7 +153,7 @@ export default function LandingPage() {
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-white">
             {[
               { stat: '50+', label: 'Industry presets' },
-              { stat: '500', label: 'Searches/month on Pro' },
+              { stat: '150', label: 'Searches/month on Pro' },
               { stat: '1-click', label: 'AI outreach generation' },
             ].map(({ stat, label }) => (
               <div key={label}>
@@ -215,7 +215,7 @@ export default function LandingPage() {
               </div>
               <ul className="space-y-3 text-sm text-blue-100">
                 {[
-                  '500 searches/month',
+                  '150 searches/month',
                   'Radius search (any area)',
                   'Email enrichment',
                   'AI outreach generation',

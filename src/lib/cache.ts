@@ -4,7 +4,7 @@ import type { Business } from '@/types';
 const TTL_MS = 48 * 60 * 60 * 1000; // 48 hours
 
 // Bump this when search logic changes to invalidate all existing cached results
-const CACHE_VERSION = 'v2';
+const CACHE_VERSION = 'v3';
 
 export function makeKeywordCacheKey(query: string) {
   return `${CACHE_VERSION}:kw:${query.trim().toLowerCase()}`;

@@ -1,4 +1,5 @@
 import type { Business } from '@/types';
+import { analyzeWebsite } from './website-intelligence';
 
 export type { Business };
 
@@ -145,6 +146,22 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
       emailSource: null,
       ownerName: null,
       enriched: false,
+    });
+  }
+
+  // Gather website intelligence for businesses with real websites (ok status only gets HTML)
+  const INTEL_BATCH = 15;
+  const intelligenceTargets = businesses
+    .map((b, i) => ({ b, i }))
+    .filter(({ b }) => b.website && b.websiteStatus !== 'none');
+
+  for (let x = 0; x < intelligenceTargets.length; x += INTEL_BATCH) {
+    const batch = intelligenceTargets.slice(x, x + INTEL_BATCH);
+    const results = await Promise.all(
+      batch.map(({ b }) => analyzeWebsite(b.website!, b.websiteStatus))
+    );
+    batch.forEach(({ b }, j) => {
+      b.websiteIntelligence = results[j];
     });
   }
 

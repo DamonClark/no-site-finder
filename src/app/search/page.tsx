@@ -53,6 +53,16 @@ const DEFAULT_FILTERS: Filters = {
 
 const RADIUS_OPTIONS = [10, 25, 50] as const;
 
+// ─── Website intelligence helpers ────────────────────────────────────────────
+
+const PLATFORM_LABELS: Record<string, string> = {
+  wordpress: 'WordPress',
+  wix: 'Wix',
+  squarespace: 'Squarespace',
+  webflow: 'Webflow',
+  shopify: 'Shopify',
+};
+
 // ─── Pure helpers ─────────────────────────────────────────────────────────────
 
 function getScoreBadge(score: number, hasWebsite: boolean) {
@@ -432,7 +442,7 @@ export default function Home() {
 
         {upgradedBanner && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-xl px-4 py-3 flex items-center gap-2">
-            🎉 Welcome to Pro! You now have 500 searches/month.
+            🎉 Welcome to Pro! You now have 150 searches/month.
           </div>
         )}
 
@@ -893,6 +903,28 @@ export default function Home() {
                             <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">No website</span>
                           )}
                         </div>
+
+                        {/* Website intelligence */}
+                        {lead.websiteIntelligence && lead.hasWebsite && (
+                          <div className="sm:col-span-2 flex items-center flex-wrap gap-1.5">
+                            {lead.websiteIntelligence.platform.platform !== 'unknown' && (
+                              <span className="text-xs bg-slate-100 text-slate-600 border border-slate-200 px-2 py-0.5 rounded-full">
+                                {PLATFORM_LABELS[lead.websiteIntelligence.platform.platform] ?? lead.websiteIntelligence.platform.platform}
+                              </span>
+                            )}
+                            {lead.websiteIntelligence.age.estimated_launch_year !== null &&
+                              lead.websiteIntelligence.age.confidence >= 0.35 && (
+                              <span className="text-xs text-slate-400">
+                                ~{new Date().getFullYear() - lead.websiteIntelligence.age.estimated_launch_year}yr old
+                              </span>
+                            )}
+                            {lead.websiteIntelligence.outdated.is_outdated && (
+                              <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full">
+                                Possibly outdated
+                              </span>
+                            )}
+                          </div>
+                        )}
 
                         {/* Email row */}
                         {lead.websiteStatus !== 'ok' && lead.enriched && (
