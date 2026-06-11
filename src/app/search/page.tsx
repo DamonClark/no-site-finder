@@ -14,11 +14,6 @@ type SortKey = 'leadScore' | 'reviewCount' | 'rating' | 'name';
 type WebsiteFilter = 'any' | 'missing' | 'missing_or_broken' | 'broken' | 'slow';
 type SearchMode = 'single' | 'radius';
 
-interface OutreachResult {
-  previewUrl: string;
-  smsText: string;
-}
-
 interface Filters {
   minReviews: number;
   minRating: number;
@@ -195,11 +190,6 @@ export default function Home() {
   const [enriching, setEnriching] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
 
-  const [outreachMap, setOutreachMap] = useState<Map<string, OutreachResult>>(new Map());
-  const [outreachErrors, setOutreachErrors] = useState<Set<string>>(new Set());
-  const [generatingOutreach, setGeneratingOutreach] = useState<Set<string>>(new Set());
-  const [copiedOutreachUrl, setCopiedOutreachUrl] = useState<string | null>(null);
-  const [copiedSms, setCopiedSms] = useState<string | null>(null);
 
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
@@ -340,30 +330,6 @@ export default function Home() {
     }
   };
 
-  const handleGenerateOutreach = async (lead: Business) => {
-    if (generatingOutreach.has(lead.placeId)) return;
-    setGeneratingOutreach((prev) => new Set([...prev, lead.placeId]));
-    setOutreachErrors((prev) => { const next = new Set(prev); next.delete(lead.placeId); return next; });
-    try {
-      const res = await fetch('/api/generate-outreach', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ business: lead }),
-      });
-      if (!res.ok) { setOutreachErrors((prev) => new Set([...prev, lead.placeId])); return; }
-      const data = await res.json() as OutreachResult;
-      setOutreachMap((prev) => new Map([...prev, [lead.placeId, data]]));
-    } catch {
-      setOutreachErrors((prev) => new Set([...prev, lead.placeId]));
-    } finally {
-      setGeneratingOutreach((prev) => { const next = new Set(prev); next.delete(lead.placeId); return next; });
-    }
-  };
-
-  const handleGenerateAll = () => {
-    leads.filter((b) => b.websiteStatus !== 'ok' && !outreachMap.has(b.placeId) && !generatingOutreach.has(b.placeId))
-      .forEach((lead) => handleGenerateOutreach(lead));
-  };
 
   // ── Derived data ──
 
@@ -771,17 +737,7 @@ export default function Home() {
                     ) : `Find Contacts (${enrichableCount})`}
                   </button>
                 )}
-                {leads.some((b) => b.websiteStatus !== 'ok') && (
-                  <button
-                    onClick={handleGenerateAll}
-                    disabled={generatingOutreach.size > 0}
-                    className="inline-flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-700 disabled:opacity-60 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
-                  >
-                    {generatingOutreach.size > 0 ? (
-                      <><span className="inline-block w-3 h-3 border-2 border-white border-t-transparent rounded-full animate-spin" />Generating {generatingOutreach.size}…</>
-                    ) : 'Generate All Outreach'}
-                  </button>
-                )}
+
                 <button
                   onClick={() => exportCSV(sorted)}
                   className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
@@ -982,69 +938,11 @@ export default function Home() {
                           Export
                         </button>
 
-                        {lead.websiteStatus !== 'ok' && (() => {
-                          const outreach = outreachMap.get(lead.placeId);
-                          const isGenerating = generatingOutreach.has(lead.placeId);
-                          const hasError = outreachErrors.has(lead.placeId);
-                          return (
-                            <button
-                              onClick={() => handleGenerateOutreach(lead)}
-                              disabled={isGenerating}
-                              className={`text-xs px-2.5 py-1 rounded-lg transition-colors font-medium flex items-center gap-1.5 border disabled:opacity-60 ${
-                                hasError
-                                  ? 'bg-red-50 text-red-700 border-red-200 hover:bg-red-100'
-                                  : outreach
-                                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200'
-                                  : 'bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border-indigo-200'
-                              }`}
-                            >
-                              {isGenerating ? (
-                                <><span className="inline-block w-2.5 h-2.5 border-2 border-indigo-500 border-t-transparent rounded-full animate-spin" />Generating…</>
-                              ) : outreach ? '✓ Outreach Ready'
-                                : hasError ? 'Failed — retry'
-                                : '✨ Generate Outreach'}
-                            </button>
-                          );
-                        })()}
+
                       </div>
                     </div>
 
-                    {/* Outreach panel */}
-                    {outreachMap.get(lead.placeId) && (() => {
-                      const outreach = outreachMap.get(lead.placeId)!;
-                      return (
-                        <div className="border-t border-indigo-100 bg-indigo-50 p-4 space-y-3 text-xs">
-                          <div className="flex items-center gap-2">
-                            <span className="font-semibold text-indigo-700 w-16 shrink-0">Microsite</span>
-                            <span className="text-slate-600 truncate flex-1">{outreach.previewUrl}</span>
-                            <button
-                              onClick={() => { navigator.clipboard.writeText(outreach.previewUrl); setCopiedOutreachUrl(lead.placeId); setTimeout(() => setCopiedOutreachUrl(null), 2000); }}
-                              className="shrink-0 border border-indigo-200 text-indigo-700 bg-white rounded-lg px-2 py-1 hover:bg-indigo-50 transition-colors"
-                            >
-                              {copiedOutreachUrl === lead.placeId ? '✓' : 'Copy'}
-                            </button>
-                            <a
-                              href={outreach.previewUrl}
-                              target="_blank"
-                              rel="noreferrer"
-                              className="shrink-0 border border-indigo-200 text-indigo-700 bg-white rounded-lg px-2 py-1 hover:bg-indigo-50 transition-colors"
-                            >
-                              Open ↗
-                            </a>
-                          </div>
-                          <div className="flex items-start gap-2">
-                            <span className="font-semibold text-indigo-700 w-16 shrink-0 pt-0.5">SMS Text</span>
-                            <span className="text-slate-700 flex-1 leading-relaxed whitespace-pre-wrap">{outreach.smsText}</span>
-                            <button
-                              onClick={() => { navigator.clipboard.writeText(outreach.smsText); setCopiedSms(lead.placeId); setTimeout(() => setCopiedSms(null), 2000); }}
-                              className="shrink-0 border border-indigo-200 text-indigo-700 bg-white rounded-lg px-2 py-1 hover:bg-indigo-50 transition-colors"
-                            >
-                              {copiedSms === lead.placeId ? '✓' : 'Copy'}
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })()}
+
                   </li>
                 );
               })}

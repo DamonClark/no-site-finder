@@ -25,7 +25,7 @@ export function PaywallModal({ onClose }: PaywallModalProps) {
           <ul className="text-sm text-blue-700 space-y-1">
             <li>✓ 150 searches per month</li>
             <li>✓ Radius search across any area</li>
-            <li>✓ Email enrichment + AI outreach</li>
+            <li>✓ Website intelligence signals</li>
             <li>✓ CSV export</li>
           </ul>
         </div>

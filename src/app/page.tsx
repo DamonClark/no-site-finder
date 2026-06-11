@@ -55,7 +55,7 @@ export default function LandingPage() {
           </h1>
           <p className="text-xl text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
             Discover high-intent web design leads hidden in Google Maps. Search by keyword or radius,
-            score leads automatically, and send AI-generated outreach.
+            score leads automatically, and build targeted prospect lists in minutes.
           </p>
           <div className="flex gap-4 justify-center flex-wrap">
             <Link
@@ -107,7 +107,7 @@ export default function LandingPage() {
             {[
               { step: '1', title: 'Search', desc: 'Enter any keyword + city, or run a radius search across an entire area.', color: 'bg-blue-600' },
               { step: '2', title: 'Score', desc: 'Leads are automatically scored by review count, rating, and website status.', color: 'bg-indigo-600' },
-              { step: '3', title: 'Outreach', desc: 'Generate a personalized microsite preview + AI cold outreach in one click.', color: 'bg-violet-600' },
+              { step: '3', title: 'Prospect', desc: 'Export your list, copy contact details, and reach out to potential clients on your own terms.', color: 'bg-violet-600' },
             ].map(({ step, title, desc, color }) => (
               <div key={step} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center hover:shadow-md transition-shadow">
                 <div className={`w-12 h-12 ${color} text-white rounded-xl flex items-center justify-center text-xl font-bold mx-auto mb-5`}>
@@ -132,8 +132,8 @@ export default function LandingPage() {
             {[
               { icon: '📍', title: 'Radius Search', desc: 'Cover entire markets with a grid-based area search up to 50+ miles.', bg: 'bg-blue-50', border: 'border-blue-100' },
               { icon: '🔥', title: 'Lead Scoring', desc: 'Automatically ranked by review count, rating, and website status.', bg: 'bg-orange-50', border: 'border-orange-100' },
-              { icon: '📧', title: 'Email Enrichment', desc: 'Find owner contact emails via Hunter.io for high-value leads.', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-              { icon: '🤖', title: 'AI Outreach', desc: 'Generate a custom microsite preview and SMS cold outreach message.', bg: 'bg-violet-50', border: 'border-violet-100' },
+              { icon: '🌐', title: 'Website Detection', desc: 'See instantly which businesses have no site, a broken site, or an outdated platform.', bg: 'bg-emerald-50', border: 'border-emerald-100' },
+              { icon: '⚡', title: 'Instant Prospect Lists', desc: 'Build a targeted list of no-website businesses in your area in under a minute.', bg: 'bg-violet-50', border: 'border-violet-100' },
               { icon: '📊', title: 'CSV Export', desc: 'Export all filtered leads with full contact and lead data.', bg: 'bg-slate-50', border: 'border-slate-200' },
               { icon: '🏷️', title: 'Industry Presets', desc: '40+ preset categories across 7 industries for fast searches.', bg: 'bg-amber-50', border: 'border-amber-100' },
             ].map(({ icon, title, desc, bg, border }) => (
@@ -154,7 +154,7 @@ export default function LandingPage() {
             {[
               { stat: '50+', label: 'Industry presets' },
               { stat: '150', label: 'Searches/month on Pro' },
-              { stat: '1-click', label: 'AI outreach generation' },
+              { stat: '<60s', label: 'To build a prospect list' },
             ].map(({ stat, label }) => (
               <div key={label}>
                 <div className="text-3xl font-extrabold">{stat}</div>
@@ -217,8 +217,8 @@ export default function LandingPage() {
                 {[
                   '150 searches/month',
                   'Radius search (any area)',
-                  'Email enrichment',
-                  'AI outreach generation',
+                  'Website intelligence signals',
+                  'All 50+ industry presets',
                   'CSV export',
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2.5">
