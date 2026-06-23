@@ -1,12 +1,12 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
-import { UserButton } from '@clerk/nextjs';
-import type { Business } from '@/types';
+import type { Business, UserLead, LeadNote, PipelineStatus, LeadList } from '@/types';
 import { INDUSTRY_GROUPS, recentSearches } from '@/lib/industry-presets';
 import { UsageBar } from '@/components/UsageBar';
 import { PaywallModal } from '@/components/PaywallModal';
 import { UpgradeButton } from '@/components/UpgradeButton';
+import { AppNav } from '@/components/AppNav';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +47,16 @@ const DEFAULT_FILTERS: Filters = {
 };
 
 const RADIUS_OPTIONS = [10, 25, 50] as const;
+
+const PIPELINE_STATUSES: { value: PipelineStatus; label: string }[] = [
+  { value: 'new', label: 'New' },
+  { value: 'contacted', label: 'Contacted' },
+  { value: 'follow_up', label: 'Follow Up' },
+  { value: 'meeting_scheduled', label: 'Meeting Scheduled' },
+  { value: 'proposal_sent', label: 'Proposal Sent' },
+  { value: 'won', label: 'Won' },
+  { value: 'lost', label: 'Lost' },
+];
 
 // ─── Website intelligence helpers ────────────────────────────────────────────
 
@@ -163,6 +173,187 @@ function StatCard({ label, value, highlight = false, icon }: { label: string; va
   );
 }
 
+function NotesModal({
+  placeId,
+  businessName,
+  onClose,
+  onNoteCountChange,
+}: {
+  placeId: string;
+  businessName: string;
+  onClose: () => void;
+  onNoteCountChange: (count: number) => void;
+}) {
+  const [notes, setNotes] = useState<LeadNote[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [newContent, setNewContent] = useState('');
+  const [saving, setSaving] = useState(false);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [editContent, setEditContent] = useState('');
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/leads/${encodeURIComponent(placeId)}/notes`)
+      .then((r) => r.json())
+      .then((d) => { setNotes(d.notes ?? []); setLoading(false); })
+      .catch(() => setLoading(false));
+  }, [placeId]);
+
+  const handleAdd = async () => {
+    if (!newContent.trim() || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch(`/api/leads/${encodeURIComponent(placeId)}/notes`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: newContent.trim() }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      const updated = [data.note, ...notes];
+      setNotes(updated);
+      setNewContent('');
+      onNoteCountChange(updated.length);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const handleEdit = async (noteId: string) => {
+    if (!editContent.trim()) return;
+    try {
+      const res = await fetch(`/api/leads/${encodeURIComponent(placeId)}/notes/${noteId}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ content: editContent.trim() }),
+      });
+      if (!res.ok) return;
+      const data = await res.json();
+      setNotes((prev) => prev.map((n) => (n.id === noteId ? data.note : n)));
+      setEditingId(null);
+      setEditContent('');
+    } catch {}
+  };
+
+  const handleDelete = async (noteId: string) => {
+    setDeletingId(noteId);
+    try {
+      const res = await fetch(`/api/leads/${encodeURIComponent(placeId)}/notes/${noteId}`, {
+        method: 'DELETE',
+      });
+      if (!res.ok) return;
+      const updated = notes.filter((n) => n.id !== noteId);
+      setNotes(updated);
+      onNoteCountChange(updated.length);
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100 shrink-0">
+          <div>
+            <h3 className="font-semibold text-slate-900 leading-snug">{businessName}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Notes</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-3 space-y-3 min-h-0">
+          {loading && (
+            <div className="text-center py-6">
+              <span className="inline-block w-5 h-5 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
+            </div>
+          )}
+          {!loading && notes.length === 0 && (
+            <p className="text-sm text-slate-400 text-center py-6">No notes yet. Add one below.</p>
+          )}
+          {notes.map((note) => (
+            <div key={note.id} className="bg-slate-50 rounded-lg p-3 border border-slate-100">
+              {editingId === note.id ? (
+                <div className="space-y-2">
+                  <textarea
+                    value={editContent}
+                    onChange={(e) => setEditContent(e.target.value)}
+                    className="w-full border border-slate-200 rounded-lg px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none"
+                    rows={3}
+                    autoFocus
+                  />
+                  <div className="flex gap-2">
+                    <button
+                      onClick={() => handleEdit(note.id)}
+                      className="text-xs bg-blue-600 hover:bg-blue-700 text-white px-3 py-1.5 rounded-lg transition-colors"
+                    >
+                      Save
+                    </button>
+                    <button
+                      onClick={() => { setEditingId(null); setEditContent(''); }}
+                      className="text-xs border border-slate-200 text-slate-600 px-3 py-1.5 rounded-lg hover:bg-slate-50 transition-colors"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              ) : (
+                <>
+                  <p className="text-sm text-slate-700 whitespace-pre-wrap">{note.content}</p>
+                  <div className="flex items-center justify-between mt-2">
+                    <span className="text-xs text-slate-400">
+                      {new Date(note.createdAt).toLocaleDateString('en-US', {
+                        month: 'short', day: 'numeric', year: 'numeric',
+                      })}
+                    </span>
+                    <div className="flex gap-3">
+                      <button
+                        onClick={() => { setEditingId(note.id); setEditContent(note.content); }}
+                        className="text-xs text-slate-400 hover:text-slate-700 transition-colors"
+                      >
+                        Edit
+                      </button>
+                      <button
+                        onClick={() => handleDelete(note.id)}
+                        disabled={deletingId === note.id}
+                        className="text-xs text-red-400 hover:text-red-600 transition-colors disabled:opacity-50"
+                      >
+                        {deletingId === note.id ? '…' : 'Delete'}
+                      </button>
+                    </div>
+                  </div>
+                </>
+              )}
+            </div>
+          ))}
+        </div>
+
+        <div className="px-5 pb-5 pt-3 border-t border-slate-100 space-y-2 shrink-0">
+          <textarea
+            value={newContent}
+            onChange={(e) => setNewContent(e.target.value)}
+            placeholder="Add a note…"
+            className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 resize-none placeholder:text-slate-400"
+            rows={2}
+            onKeyDown={(e) => { if (e.key === 'Enter' && e.metaKey) handleAdd(); }}
+          />
+          <button
+            onClick={handleAdd}
+            disabled={saving || !newContent.trim()}
+            className="w-full bg-blue-600 hover:bg-blue-700 disabled:opacity-50 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+          >
+            {saving ? 'Saving…' : 'Save Note'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -190,10 +381,22 @@ export default function Home() {
   const [enriching, setEnriching] = useState(false);
   const [copiedEmail, setCopiedEmail] = useState<string | null>(null);
 
-
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
   const [upgradedBanner, setUpgradedBanner] = useState(false);
+
+  // ── Pipeline state ──
+  const [leadMap, setLeadMap] = useState<Map<string, UserLead>>(new Map());
+  const [savingLeadId, setSavingLeadId] = useState<string | null>(null);
+  const [savedLeadId, setSavedLeadId] = useState<string | null>(null);
+  const [errorLeadId, setErrorLeadId] = useState<string | null>(null);
+  const [pipelineFilter, setPipelineFilter] = useState<PipelineStatus | 'all'>('all');
+  const [notesModalLead, setNotesModalLead] = useState<Business | null>(null);
+
+  // ── Lists state ──
+  const [lists, setLists] = useState<LeadList[]>([]);
+  const [savingListLeadId, setSavingListLeadId] = useState<string | null>(null);
+  const [newListModalBusiness, setNewListModalBusiness] = useState<Business | null>(null);
 
   useEffect(() => {
     fetch('/api/usage').then((r) => r.ok ? r.json() : null).then((d) => { if (d) setUsage(d); });
@@ -202,6 +405,19 @@ export default function Home() {
       window.history.replaceState({}, '', '/search');
       setTimeout(() => setUpgradedBanner(false), 4000);
     }
+  }, []);
+
+  // Load pipeline statuses + lists on mount
+  useEffect(() => {
+    Promise.all([
+      fetch('/api/leads').then((r) => r.ok ? r.json() : { leads: [] }),
+      fetch('/api/lists').then((r) => r.ok ? r.json() : { lists: [] }),
+    ]).then(([leadsData, listsData]) => {
+      const map = new Map<string, UserLead>();
+      for (const lead of leadsData.leads ?? []) map.set(lead.placeId, lead);
+      setLeadMap(map);
+      setLists(listsData.lists ?? []);
+    }).catch(() => {});
   }, []);
 
   const [sortKey, setSortKey] = useState<SortKey>('leadScore');
@@ -220,6 +436,7 @@ export default function Home() {
     setSearchMeta(null);
     setTopN(null);
     setFromCache(false);
+    setPipelineFilter('all');
     try {
       const res = await fetch('/api/search', {
         method: 'POST',
@@ -254,6 +471,7 @@ export default function Home() {
     setSearchMeta(null);
     setTopN(null);
     setFromCache(false);
+    setPipelineFilter('all');
     try {
       const res = await fetch('/api/search-radius', {
         method: 'POST',
@@ -330,6 +548,122 @@ export default function Home() {
     }
   };
 
+  // ── Pipeline handlers ──
+
+  const handleSaveStatus = async (business: Business, status: PipelineStatus) => {
+    setSavingLeadId(business.placeId);
+    const previous = leadMap.get(business.placeId);
+    // Optimistic update
+    setLeadMap((prev) => {
+      const next = new Map(prev);
+      next.set(business.placeId, {
+        ...(previous ?? { id: '', noteCount: 0, snapshot: null, listIds: [], createdAt: '', updatedAt: '' }),
+        placeId: business.placeId,
+        status,
+      });
+      return next;
+    });
+    try {
+      const res = await fetch('/api/leads', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placeId: business.placeId, status, snapshot: business }),
+      });
+      if (!res.ok) throw new Error('save failed');
+      const data = await res.json();
+      setLeadMap((prev) => {
+        const next = new Map(prev);
+        next.set(data.lead.placeId, data.lead);
+        return next;
+      });
+      setSavedLeadId(business.placeId);
+      setTimeout(() => setSavedLeadId(null), 2000);
+    } catch {
+      // Revert optimistic update on failure
+      setLeadMap((prev) => {
+        const next = new Map(prev);
+        if (previous) next.set(business.placeId, previous);
+        else next.delete(business.placeId);
+        return next;
+      });
+      setErrorLeadId(business.placeId);
+      setTimeout(() => setErrorLeadId(null), 3000);
+    } finally {
+      setSavingLeadId(null);
+    }
+  };
+
+  const handleNoteCountChange = (placeId: string, count: number) => {
+    setLeadMap((prev) => {
+      const next = new Map(prev);
+      const existing = next.get(placeId);
+      if (existing) next.set(placeId, { ...existing, noteCount: count });
+      return next;
+    });
+  };
+
+  // ── List handlers ──
+
+  const handleToggleList = async (business: Business, listId: string) => {
+    const currentLead = leadMap.get(business.placeId);
+    const alreadyIn = currentLead?.listIds.includes(listId) ?? false;
+    setSavingListLeadId(business.placeId);
+
+    if (alreadyIn) {
+      // Remove from list
+      const res = await fetch(`/api/lists/${listId}/leads/${encodeURIComponent(business.placeId)}`, {
+        method: 'DELETE',
+      });
+      if (res.ok) {
+        setLeadMap((prev) => {
+          const next = new Map(prev);
+          const lead = next.get(business.placeId);
+          if (lead) next.set(business.placeId, { ...lead, listIds: lead.listIds.filter((id) => id !== listId) });
+          return next;
+        });
+        setLists((prev) => prev.map((l) => l.id === listId ? { ...l, leadCount: Math.max(0, l.leadCount - 1) } : l));
+      }
+    } else {
+      // Add to list
+      const res = await fetch(`/api/lists/${listId}/leads`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ placeId: business.placeId, snapshot: business }),
+      });
+      if (res.ok) {
+        setLeadMap((prev) => {
+          const next = new Map(prev);
+          const lead = next.get(business.placeId);
+          if (lead) {
+            next.set(business.placeId, { ...lead, listIds: [...lead.listIds, listId] });
+          } else {
+            next.set(business.placeId, {
+              id: '', placeId: business.placeId, status: 'new',
+              snapshot: business, noteCount: 0, listIds: [listId],
+              createdAt: '', updatedAt: '',
+            });
+          }
+          return next;
+        });
+        setLists((prev) => prev.map((l) => l.id === listId ? { ...l, leadCount: l.leadCount + 1 } : l));
+      }
+    }
+    setSavingListLeadId(null);
+  };
+
+  const handleCreateAndAddToList = async (name: string, business: Business) => {
+    const res = await fetch('/api/lists', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name }),
+    });
+    if (!res.ok) return;
+    const data = await res.json();
+    const newList: LeadList = data.list;
+    setLists((prev) => [newList, ...prev]);
+    // Add lead to the new list
+    await handleToggleList(business, newList.id);
+  };
 
   // ── Derived data ──
 
@@ -344,6 +678,11 @@ export default function Home() {
     });
     return topN ? s.slice(0, topN) : s;
   }, [filtered, sortKey, topN]);
+
+  const pipelineFiltered = useMemo(() => {
+    if (pipelineFilter === 'all') return sorted;
+    return sorted.filter((b) => leadMap.get(b.placeId)?.status === pipelineFilter);
+  }, [sorted, pipelineFilter, leadMap]);
 
   const enrichableCount = useMemo(
     () => leads.filter((b) => b.websiteStatus === 'broken' || b.websiteStatus === 'slow').length,
@@ -365,6 +704,19 @@ export default function Home() {
     return { total: leads.length, noWebsite: noWebsite.length, highValue: highValue.length, avgReviews, topCategories };
   }, [leads]);
 
+  // Pipeline counts across all tracked leads
+  const pipelineCounts = useMemo(() => {
+    const counts = Object.fromEntries(
+      PIPELINE_STATUSES.map(({ value }) => [value, 0])
+    ) as Record<PipelineStatus, number>;
+    for (const lead of leadMap.values()) {
+      if (lead.status in counts) counts[lead.status]++;
+    }
+    return counts;
+  }, [leadMap]);
+
+  const totalTracked = useMemo(() => leadMap.size, [leadMap]);
+
   const loadingMessage = searchMode === 'radius'
     ? `Searching ${category} within ${radiusMiles} miles of ${baseCity}…`
     : 'Searching…';
@@ -375,21 +727,77 @@ export default function Home() {
     <div className="min-h-screen bg-slate-50">
       {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
 
-      {/* Sticky header */}
-      <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-sm border-b border-slate-200">
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-900 text-lg tracking-tight">No-Site Finder</span>
+      {notesModalLead && (
+        <NotesModal
+          placeId={notesModalLead.placeId}
+          businessName={notesModalLead.name}
+          onClose={() => setNotesModalLead(null)}
+          onNoteCountChange={(count) => handleNoteCountChange(notesModalLead.placeId, count)}
+        />
+      )}
+
+      {newListModalBusiness && (
+        <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 space-y-4">
+            <h3 className="font-semibold text-slate-900">New List</h3>
+            <p className="text-xs text-slate-400">Adding: {newListModalBusiness.name}</p>
+            <input
+              id="new-list-name"
+              type="text"
+              placeholder="e.g. Pittsburgh Plumbers Q1"
+              className="w-full border border-slate-200 rounded-lg px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/20 focus:border-blue-400"
+              autoFocus
+              onKeyDown={async (e) => {
+                if (e.key === 'Enter') {
+                  const val = (e.target as HTMLInputElement).value.trim();
+                  if (val) {
+                    const biz = newListModalBusiness;
+                    setNewListModalBusiness(null);
+                    await handleCreateAndAddToList(val, biz);
+                  }
+                }
+                if (e.key === 'Escape') setNewListModalBusiness(null);
+              }}
+            />
+            <div className="flex gap-2">
+              <button
+                onClick={async () => {
+                  const input = document.getElementById('new-list-name') as HTMLInputElement;
+                  const val = input?.value.trim();
+                  if (val) {
+                    const biz = newListModalBusiness;
+                    setNewListModalBusiness(null);
+                    await handleCreateAndAddToList(val, biz!);
+                  }
+                }}
+                className="flex-1 bg-blue-600 hover:bg-blue-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                Create &amp; Add
+              </button>
+              <button
+                onClick={() => setNewListModalBusiness(null)}
+                className="px-4 py-2 border border-slate-200 text-slate-600 text-sm rounded-lg hover:bg-slate-50 transition-colors"
+              >
+                Cancel
+              </button>
+            </div>
           </div>
-          <div className="flex items-center gap-3">
-            {usage && (
-              <UsageBar
-                searchCount={usage.searchCount}
-                searchLimit={usage.searchLimit}
-                plan={usage.plan}
-              />
-            )}
-            {usage && usage.plan !== 'pro' && (
+        </div>
+      )}
+
+      <AppNav />
+
+      <main className="max-w-5xl mx-auto px-4 py-6 pb-16 space-y-5">
+
+        {/* Usage strip */}
+        {usage && (
+          <div className="flex items-center justify-between gap-3">
+            <UsageBar
+              searchCount={usage.searchCount}
+              searchLimit={usage.searchLimit}
+              plan={usage.plan}
+            />
+            {usage.plan !== 'pro' && (
               <UpgradeButton
                 label={usage.searchCount >= usage.searchLimit ? 'Upgrade to Search More' : 'Upgrade'}
                 className={
@@ -399,12 +807,8 @@ export default function Home() {
                 }
               />
             )}
-            <UserButton />
           </div>
-        </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 py-6 pb-16 space-y-5">
+        )}
 
         {upgradedBanner && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-xl px-4 py-3 flex items-center gap-2">
@@ -539,6 +943,45 @@ export default function Home() {
             </div>
           )}
         </div>
+
+        {/* Pipeline summary strip */}
+        {totalTracked > 0 && (
+          <div className="bg-white border border-slate-200 rounded-xl p-4">
+            <div className="flex items-center justify-between mb-3">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide">
+                My Pipeline · {totalTracked} lead{totalTracked !== 1 ? 's' : ''} tracked
+              </p>
+              {pipelineFilter !== 'all' && (
+                <button
+                  onClick={() => setPipelineFilter('all')}
+                  className="text-xs text-blue-600 hover:text-blue-800 transition-colors"
+                >
+                  Clear filter
+                </button>
+              )}
+            </div>
+            <div className="flex flex-wrap gap-2">
+              {PIPELINE_STATUSES.map(({ value, label }) => {
+                const count = pipelineCounts[value];
+                if (count === 0) return null;
+                const isActive = pipelineFilter === value;
+                return (
+                  <button
+                    key={value}
+                    onClick={() => setPipelineFilter(isActive ? 'all' : value)}
+                    className={`text-xs px-2.5 py-1 rounded-full border font-medium transition-colors ${
+                      isActive
+                        ? 'bg-blue-600 text-white border-blue-600'
+                        : 'bg-slate-50 text-slate-600 border-slate-200 hover:bg-slate-100'
+                    }`}
+                  >
+                    {label} <span className={isActive ? 'text-blue-100' : 'text-slate-400'}>{count}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        )}
 
         {error && (
           <div className="bg-red-50 border border-red-200 text-red-700 text-sm rounded-xl px-4 py-3">
@@ -677,6 +1120,19 @@ export default function Home() {
                     </select>
                   </label>
                   <label className="flex flex-col gap-1.5">
+                    <span className="font-medium text-slate-700">Pipeline Status</span>
+                    <select
+                      value={pipelineFilter}
+                      onChange={(e) => setPipelineFilter(e.target.value as PipelineStatus | 'all')}
+                      className="border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
+                    >
+                      <option value="all">All</option>
+                      {PIPELINE_STATUSES.map(({ value, label }) => (
+                        <option key={value} value={value}>{label}</option>
+                      ))}
+                    </select>
+                  </label>
+                  <label className="flex flex-col gap-1.5">
                     <span className="font-medium text-slate-700">Category</span>
                     <input
                       type="text"
@@ -686,7 +1142,7 @@ export default function Home() {
                       className="border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                     />
                   </label>
-                  <label className="flex flex-col gap-1.5 sm:col-span-2">
+                  <label className="flex flex-col gap-1.5">
                     <span className="font-medium text-slate-700">City / Area</span>
                     <input
                       type="text"
@@ -697,7 +1153,7 @@ export default function Home() {
                     />
                   </label>
                   <button
-                    onClick={() => { setFilters(DEFAULT_FILTERS); setTopN(null); }}
+                    onClick={() => { setFilters(DEFAULT_FILTERS); setTopN(null); setPipelineFilter('all'); }}
                     className="text-xs text-slate-400 hover:text-slate-600 underline text-left"
                   >
                     Reset filters
@@ -722,7 +1178,10 @@ export default function Home() {
                 </select>
               </div>
               <span className="text-sm text-slate-500">
-                {sorted.length} lead{sorted.length !== 1 ? 's' : ''}{topN ? ` (top ${topN})` : ''}
+                {pipelineFiltered.length} lead{pipelineFiltered.length !== 1 ? 's' : ''}{topN ? ` (top ${topN})` : ''}
+                {pipelineFilter !== 'all' && (
+                  <span className="text-blue-600 ml-1">· {PIPELINE_STATUSES.find(s => s.value === pipelineFilter)?.label}</span>
+                )}
               </span>
 
               <div className="flex items-center gap-2 ml-auto flex-wrap">
@@ -739,7 +1198,7 @@ export default function Home() {
                 )}
 
                 <button
-                  onClick={() => exportCSV(sorted)}
+                  onClick={() => exportCSV(pipelineFiltered)}
                   className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                 >
                   Export CSV
@@ -747,9 +1206,19 @@ export default function Home() {
               </div>
             </div>
 
-            {sorted.length === 0 && searchPerformed && (
+            {pipelineFiltered.length === 0 && searchPerformed && (
               <div className="bg-white border border-slate-200 rounded-xl p-8 text-center space-y-3">
-                {leads.length > 0 ? (
+                {pipelineFilter !== 'all' ? (
+                  <>
+                    <p className="text-slate-600 font-medium">No leads with status &ldquo;{PIPELINE_STATUSES.find(s => s.value === pipelineFilter)?.label}&rdquo; in these results.</p>
+                    <button
+                      onClick={() => setPipelineFilter('all')}
+                      className="text-sm bg-blue-600 hover:bg-blue-700 text-white font-medium px-4 py-2 rounded-lg transition-colors"
+                    >
+                      Show all leads
+                    </button>
+                  </>
+                ) : leads.length > 0 ? (
                   <>
                     <p className="text-slate-600 font-medium">No leads match your current filters.</p>
                     <p className="text-slate-400 text-sm">
@@ -771,9 +1240,10 @@ export default function Home() {
 
             {/* Lead cards */}
             <ul className="space-y-3">
-              {sorted.map((lead) => {
+              {pipelineFiltered.map((lead) => {
                 const badge = getScoreBadge(lead.leadScore, lead.hasWebsite);
                 const isHighValue = lead.leadScore >= HIGH_VALUE_SCORE && !lead.hasWebsite;
+                const currentLead = leadMap.get(lead.placeId);
 
                 return (
                   <li
@@ -903,6 +1373,7 @@ export default function Home() {
                             )}
                           </div>
                         )}
+
                       </div>
 
                       {/* Action row */}
@@ -938,11 +1409,75 @@ export default function Home() {
                           Export
                         </button>
 
+                        {/* Pipeline status selector */}
+                        <select
+                          value={currentLead?.status ?? ''}
+                          onChange={(e) => {
+                            if (e.target.value) handleSaveStatus(lead, e.target.value as PipelineStatus);
+                          }}
+                          disabled={savingLeadId === lead.placeId}
+                          className={`text-xs border rounded-lg px-2 py-1 bg-white focus:outline-none focus:ring-2 focus:ring-blue-500/20 transition-all cursor-pointer ${
+                            savingLeadId === lead.placeId ? 'opacity-50 cursor-wait border-slate-200 text-slate-700' : ''
+                          } ${currentLead?.status && savingLeadId !== lead.placeId ? 'border-blue-200 text-blue-700 bg-blue-50' : ''} ${
+                            !currentLead?.status && savingLeadId !== lead.placeId ? 'border-slate-200 text-slate-700' : ''
+                          }`}
+                        >
+                          <option value="">— Pipeline —</option>
+                          {PIPELINE_STATUSES.map(({ value, label }) => (
+                            <option key={value} value={value}>{label}</option>
+                          ))}
+                        </select>
+                        {savedLeadId === lead.placeId && (
+                          <span className="text-xs text-emerald-600 font-medium">✓ Saved</span>
+                        )}
+                        {errorLeadId === lead.placeId && (
+                          <span className="text-xs text-red-500 font-medium">⚠ Failed</span>
+                        )}
 
+                        {/* Notes button */}
+                        <button
+                          onClick={() => setNotesModalLead(lead)}
+                          className={`text-xs border px-2.5 py-1 rounded-lg transition-colors ${
+                            currentLead?.noteCount
+                              ? 'bg-amber-50 border-amber-200 text-amber-700 hover:bg-amber-100'
+                              : 'bg-slate-50 hover:bg-slate-100 text-slate-600 border-slate-200'
+                          }`}
+                        >
+                          {currentLead?.noteCount ? `Notes (${currentLead.noteCount})` : 'Notes'}
+                        </button>
+
+                        {/* Save to List dropdown */}
+                        <select
+                          value=""
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            e.target.value = '';
+                            if (val === '__new__') {
+                              setNewListModalBusiness(lead);
+                            } else if (val) {
+                              handleToggleList(lead, val);
+                            }
+                          }}
+                          disabled={savingListLeadId === lead.placeId}
+                          className={`text-xs border border-slate-200 rounded-lg px-2 py-1 bg-white text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500/20 cursor-pointer transition-opacity ${
+                            savingListLeadId === lead.placeId ? 'opacity-50 cursor-wait' : ''
+                          } ${currentLead?.listIds.length ? 'border-green-200 bg-green-50 text-green-700' : ''}`}
+                        >
+                          <option value="">
+                            {currentLead?.listIds.length
+                              ? `In ${currentLead.listIds.length} list${currentLead.listIds.length !== 1 ? 's' : ''}`
+                              : '— Save to List —'}
+                          </option>
+                          {lists.map((list) => (
+                            <option key={list.id} value={list.id}>
+                              {currentLead?.listIds.includes(list.id) ? '✓ ' : ''}
+                              {list.name}
+                            </option>
+                          ))}
+                          <option value="__new__">+ New List…</option>
+                        </select>
                       </div>
                     </div>
-
-
                   </li>
                 );
               })}

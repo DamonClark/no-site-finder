@@ -18,16 +18,63 @@ model SearchCache {
 }
 
 model User {
-  id                     String    @id @default(cuid())
-  clerkId                String    @unique
-  email                  String    @unique
-  plan                   String    @default("free")
-  searchCount            Int       @default(0)
-  searchLimit            Int       @default(10)
-  stripeCustomerId       String?   @unique
-  stripeSubscriptionId   String?   @unique
+  id                     String     @id @default(cuid())
+  clerkId                String     @unique
+  email                  String     @unique
+  plan                   String     @default("free")
+  searchCount            Int        @default(0)
+  searchLimit            Int        @default(10)
+  stripeCustomerId       String?    @unique
+  stripeSubscriptionId   String?    @unique
   stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
-  createdAt              DateTime  @default(now())
-  updatedAt              DateTime  @updatedAt
+  createdAt              DateTime   @default(now())
+  updatedAt              DateTime   @updatedAt
+  leads                  UserLead[]
+  lists                  LeadList[]
+}
+
+model UserLead {
+  id        String         @id @default(cuid())
+  userId    String
+  placeId   String
+  status    String         @default("new")
+  snapshot  Json?
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id])
+  notes     LeadNote[]
+  listItems LeadListItem[]
+
+  @@unique([userId, placeId])
+}
+
+model LeadNote {
+  id        String   @id @default(cuid())
+  leadId    String
+  content   String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lead      UserLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+}
+
+model LeadList {
+  id        String         @id @default(cuid())
+  userId    String
+  name      String
+  createdAt DateTime       @default(now())
+  updatedAt DateTime       @updatedAt
+  user      User           @relation(fields: [userId], references: [id])
+  items     LeadListItem[]
+}
+
+model LeadListItem {
+  id        String   @id @default(cuid())
+  listId    String
+  leadId    String
+  createdAt DateTime @default(now())
+  list      LeadList @relation(fields: [listId], references: [id], onDelete: Cascade)
+  lead      UserLead @relation(fields: [leadId], references: [id], onDelete: Cascade)
+
+  @@unique([listId, leadId])
 }

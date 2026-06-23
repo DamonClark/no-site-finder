@@ -6,6 +6,41 @@ export interface WebsiteIntelligence {
   outdated: { is_outdated: boolean; reasons: string[] };
 }
 
+export type PipelineStatus =
+  | 'new'
+  | 'contacted'
+  | 'follow_up'
+  | 'meeting_scheduled'
+  | 'proposal_sent'
+  | 'won'
+  | 'lost';
+
+export interface UserLead {
+  id: string;
+  placeId: string;
+  status: PipelineStatus;
+  snapshot: Business | null;
+  noteCount: number;
+  listIds: string[];
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadList {
+  id: string;
+  name: string;
+  leadCount: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface LeadNote {
+  id: string;
+  content: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface Business {
   placeId: string;
   name: string;

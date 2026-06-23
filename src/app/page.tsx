@@ -14,7 +14,11 @@ export default function LandingPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               </svg>
             </span>
-            <span className="font-bold text-lg tracking-tight">No-Site Finder</span>
+            <span className="font-bold text-lg tracking-tight">NoSiteFinder</span>
+          </div>
+          <div className="hidden sm:flex items-center gap-6 text-sm font-medium text-slate-600">
+            <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
+            <a href="#pricing" className="hover:text-slate-900 transition-colors">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
             <SignedOut>
@@ -43,61 +47,103 @@ export default function LandingPage() {
       {/* Hero */}
       <section className="relative overflow-hidden bg-gradient-to-b from-white via-blue-50/40 to-slate-50">
         <div className="absolute inset-0 bg-[radial-gradient(ellipse_80%_50%_at_50%_-10%,rgba(59,130,246,0.12),transparent)] pointer-events-none" />
-        <div className="max-w-4xl mx-auto text-center py-24 px-6 relative">
+        <div className="max-w-5xl mx-auto text-center py-24 px-6 relative">
           <div className="inline-flex items-center gap-2 bg-blue-50 text-blue-700 text-xs font-semibold px-3 py-1.5 rounded-full mb-8 border border-blue-200">
             <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-            Built for web designers &amp; freelancers
+            The prospecting platform for web designers
           </div>
           <h1 className="text-5xl sm:text-6xl font-extrabold text-slate-900 leading-[1.1] tracking-tight mb-6">
-            Find businesses<br />
-            <span className="text-blue-600">without websites</span><br />
-            in seconds
+            Turn Google Maps<br />
+            <span className="text-blue-600">into a client pipeline</span>
           </h1>
           <p className="text-xl text-slate-500 mb-10 max-w-2xl mx-auto leading-relaxed">
-            Discover high-intent web design leads hidden in Google Maps. Search by keyword or radius,
-            score leads automatically, and build targeted prospect lists in minutes.
+            NoSiteFinder finds local businesses without websites, scores them by opportunity,
+            and gives you a full prospecting workflow from first search to closed client.
           </p>
           <div className="flex gap-4 justify-center flex-wrap">
             <Link
               href="/sign-up"
               className="bg-blue-600 hover:bg-blue-700 text-white font-semibold px-8 py-4 rounded-xl text-lg transition-colors shadow-md hover:shadow-lg"
             >
-              Start for free →
+              Find my first lead — free
             </Link>
-            <Link
-              href="#how-it-works"
+            <a
+              href="#pricing"
               className="border border-slate-200 hover:border-slate-300 bg-white hover:bg-slate-50 text-slate-700 font-semibold px-8 py-4 rounded-xl text-lg transition-colors shadow-sm"
             >
-              See how it works
-            </Link>
+              View pricing
+            </a>
           </div>
-          <p className="text-sm text-slate-400 mt-5">10 free searches · No credit card required</p>
+          <p className="text-sm text-slate-400 mt-5">No credit card required · 10 searches free · Cancel anytime</p>
 
-          {/* Product mock card */}
-          <div className="mt-16 bg-white rounded-2xl border border-slate-200 shadow-xl p-6 text-left max-w-md mx-auto">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <div className="font-semibold text-slate-900">Mike&apos;s Auto Repair</div>
-                <div className="text-sm text-slate-500 mt-0.5">Scottsdale, AZ · Auto Repair</div>
+          {/* Product preview */}
+          <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto text-left">
+            {/* Search results preview */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xl p-5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Search Results</p>
+              <div className="space-y-3">
+                {[
+                  { name: "Mike's Auto Repair", score: 92, city: 'Scottsdale, AZ' },
+                  { name: 'Riverside Plumbing', score: 87, city: 'Tempe, AZ' },
+                  { name: 'Peak Landscaping', score: 81, city: 'Mesa, AZ' },
+                ].map(({ name, score, city }) => (
+                  <div key={name} className="flex items-center justify-between">
+                    <div>
+                      <div className="text-sm font-semibold text-slate-800">{name}</div>
+                      <div className="text-xs text-slate-400">{city}</div>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs bg-orange-50 text-orange-600 border border-orange-200 px-2 py-0.5 rounded-full font-semibold">No site</span>
+                      <span className="text-xs font-bold text-emerald-600">{score}</span>
+                    </div>
+                  </div>
+                ))}
               </div>
-              <span className="inline-flex items-center gap-1 bg-orange-50 text-orange-600 text-xs font-semibold px-2.5 py-1 rounded-full border border-orange-200 flex-shrink-0">
-                No website
-              </span>
             </div>
-            <div className="flex items-center gap-4 text-sm text-slate-500">
-              <span>⭐ 4.8 · 312 reviews</span>
-              <span>📞 (480) 555-0192</span>
-            </div>
-            <div className="mt-4 pt-4 border-t border-slate-100 flex items-center gap-2">
-              <div className="w-2 h-2 rounded-full bg-emerald-500 flex-shrink-0" />
-              <span className="text-xs text-slate-500">Score: <span className="font-semibold text-slate-700">92</span> · High intent lead</span>
+            {/* Pipeline preview */}
+            <div className="bg-white rounded-2xl border border-slate-200 shadow-xl p-5">
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-widest mb-3">Your Pipeline</p>
+              <div className="space-y-2.5">
+                {[
+                  { label: 'New', count: 8, color: 'bg-slate-100 text-slate-600' },
+                  { label: 'Contacted', count: 5, color: 'bg-blue-50 text-blue-700' },
+                  { label: 'Follow Up', count: 3, color: 'bg-amber-50 text-amber-700' },
+                  { label: 'Proposal Sent', count: 2, color: 'bg-violet-50 text-violet-700' },
+                  { label: 'Won', count: 1, color: 'bg-emerald-50 text-emerald-700' },
+                ].map(({ label, count, color }) => (
+                  <div key={label} className="flex items-center justify-between">
+                    <span className={`text-xs font-semibold px-2.5 py-1 rounded-full ${color}`}>{label}</span>
+                    <span className="text-xs text-slate-400 font-medium">{count} lead{count !== 1 ? 's' : ''}</span>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
         </div>
       </section>
 
+      {/* Value strip */}
+      <section className="bg-slate-50 border-y border-slate-200 py-10 px-6">
+        <div className="max-w-4xl mx-auto">
+          <p className="text-center text-xs font-semibold text-slate-400 uppercase tracking-widest mb-8">Built for web designers, freelancers &amp; small agencies</p>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6 text-center">
+            {[
+              { icon: '🔍', heading: 'Find leads in seconds', body: 'Search any city or radius area for businesses without websites, scored by opportunity.' },
+              { icon: '📋', heading: 'Stay organized', body: 'Save leads to named lists, group by campaign or location, and never lose a hot prospect.' },
+              { icon: '📊', heading: 'Track your pipeline', body: 'Move leads from New to Won through a 7-stage pipeline built for web design outreach.' },
+            ].map(({ icon, heading, body }) => (
+              <div key={heading} className="bg-white rounded-xl border border-slate-200 p-5 shadow-sm">
+                <div className="text-2xl mb-3">{icon}</div>
+                <p className="text-sm font-semibold text-slate-800 mb-1">{heading}</p>
+                <p className="text-sm text-slate-500 leading-relaxed">{body}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* How it works */}
-      <section id="how-it-works" className="bg-slate-50 py-24 px-6 border-t border-slate-100">
+      <section id="how-it-works" className="bg-white py-24 px-6 border-t border-slate-100">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl font-bold text-slate-900 mb-3">How it works</h2>
@@ -105,9 +151,9 @@ export default function LandingPage() {
           </div>
           <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
             {[
-              { step: '1', title: 'Search', desc: 'Enter any keyword + city, or run a radius search across an entire area.', color: 'bg-blue-600' },
-              { step: '2', title: 'Score', desc: 'Leads are automatically scored by review count, rating, and website status.', color: 'bg-indigo-600' },
-              { step: '3', title: 'Prospect', desc: 'Export your list, copy contact details, and reach out to potential clients on your own terms.', color: 'bg-violet-600' },
+              { step: '1', title: 'Find', desc: 'Search by keyword + city, or run a radius search to cover an entire market area. Filter by opportunity score.', color: 'bg-blue-600' },
+              { step: '2', title: 'Score', desc: 'Every lead is automatically scored by review count, rating, and website status so you reach out to the best first.', color: 'bg-indigo-600' },
+              { step: '3', title: 'Track', desc: 'Save leads to named lists. Move them through your pipeline from New to Won as you reach out and close deals.', color: 'bg-violet-600' },
             ].map(({ step, title, desc, color }) => (
               <div key={step} className="bg-white rounded-2xl border border-slate-200 shadow-sm p-8 text-center hover:shadow-md transition-shadow">
                 <div className={`w-12 h-12 ${color} text-white rounded-xl flex items-center justify-center text-xl font-bold mx-auto mb-5`}>
@@ -122,20 +168,20 @@ export default function LandingPage() {
       </section>
 
       {/* Features */}
-      <section className="py-24 px-6 bg-white border-t border-slate-100">
+      <section id="features" className="py-24 px-6 bg-slate-50 border-t border-slate-100">
         <div className="max-w-4xl mx-auto">
           <div className="text-center mb-14">
-            <h2 className="text-3xl font-bold text-slate-900 mb-3">Everything you need to find leads</h2>
-            <p className="text-slate-500">All the tools to turn Google Maps into a client pipeline</p>
+            <h2 className="text-3xl font-bold text-slate-900 mb-3">A complete prospecting workflow</h2>
+            <p className="text-slate-500">From discovering leads to closing clients — without switching tools.</p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-5">
             {[
-              { icon: '📍', title: 'Radius Search', desc: 'Cover entire markets with a grid-based area search up to 50+ miles.', bg: 'bg-blue-50', border: 'border-blue-100' },
-              { icon: '🔥', title: 'Lead Scoring', desc: 'Automatically ranked by review count, rating, and website status.', bg: 'bg-orange-50', border: 'border-orange-100' },
+              { icon: '📍', title: 'Radius Search', desc: 'Cover entire markets with a grid-based area search. Never miss a business in your target zone.', bg: 'bg-blue-50', border: 'border-blue-100' },
+              { icon: '🔥', title: 'Lead Scoring', desc: 'Automatically ranked by review count, rating, and website status. Reach the best leads first.', bg: 'bg-orange-50', border: 'border-orange-100' },
               { icon: '🌐', title: 'Website Detection', desc: 'See instantly which businesses have no site, a broken site, or an outdated platform.', bg: 'bg-emerald-50', border: 'border-emerald-100' },
-              { icon: '⚡', title: 'Instant Prospect Lists', desc: 'Build a targeted list of no-website businesses in your area in under a minute.', bg: 'bg-violet-50', border: 'border-violet-100' },
-              { icon: '📊', title: 'CSV Export', desc: 'Export all filtered leads with full contact and lead data.', bg: 'bg-slate-50', border: 'border-slate-200' },
-              { icon: '🏷️', title: 'Industry Presets', desc: '40+ preset categories across 7 industries for fast searches.', bg: 'bg-amber-50', border: 'border-amber-100' },
+              { icon: '📋', title: 'Lead Lists', desc: 'Organize leads into named lists by campaign, city, or industry. Search within a list to find the right prospect fast.', bg: 'bg-indigo-50', border: 'border-indigo-100' },
+              { icon: '📊', title: 'Contact Pipeline', desc: 'Track every lead from first contact to closed client with a 7-stage pipeline built for web designers.', bg: 'bg-violet-50', border: 'border-violet-100' },
+              { icon: '⬇️', title: 'CSV Export', desc: 'Export all filtered leads with full contact and lead data. Drop into your CRM or outreach tool.', bg: 'bg-slate-50', border: 'border-slate-200' },
             ].map(({ icon, title, desc, bg, border }) => (
               <div key={title} className={`${bg} border ${border} rounded-2xl p-6 hover:shadow-sm transition-shadow`}>
                 <div className="text-2xl mb-4">{icon}</div>
@@ -148,17 +194,17 @@ export default function LandingPage() {
       </section>
 
       {/* Stat strip */}
-      <section className="bg-blue-600 py-14 px-6">
+      <section className="bg-slate-900 py-14 px-6">
         <div className="max-w-4xl mx-auto">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-white">
             {[
-              { stat: '50+', label: 'Industry presets' },
+              { stat: '7', label: 'Pipeline stages — New to Won' },
+              { stat: '<60s', label: 'To build a targeted prospect list' },
               { stat: '150', label: 'Searches/month on Pro' },
-              { stat: '<60s', label: 'To build a prospect list' },
             ].map(({ stat, label }) => (
               <div key={label}>
                 <div className="text-3xl font-extrabold">{stat}</div>
-                <div className="text-blue-200 text-sm mt-1">{label}</div>
+                <div className="text-slate-400 text-sm mt-1">{label}</div>
               </div>
             ))}
           </div>
@@ -166,7 +212,7 @@ export default function LandingPage() {
       </section>
 
       {/* Pricing */}
-      <section className="bg-slate-50 py-24 px-6 border-t border-slate-100">
+      <section id="pricing" className="bg-slate-50 py-24 px-6 border-t border-slate-100">
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl font-bold text-slate-900 mb-3">Simple pricing</h2>
@@ -183,7 +229,13 @@ export default function LandingPage() {
                 <p className="text-slate-400 text-sm mt-1">forever</p>
               </div>
               <ul className="space-y-3 text-sm text-slate-600">
-                {['10 searches/month', 'Single keyword search', 'Lead scoring + filters', 'CSV export'].map((f) => (
+                {[
+                  '10 searches/month',
+                  'Single keyword search',
+                  'Lead scoring + filters',
+                  'Basic pipeline tracking',
+                  'CSV export',
+                ].map((f) => (
                   <li key={f} className="flex items-center gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 text-xs font-bold flex-shrink-0">✓</span>
                     {f}
@@ -219,6 +271,8 @@ export default function LandingPage() {
                   'Radius search (any area)',
                   'Website intelligence signals',
                   'All 50+ industry presets',
+                  'Contact Pipeline (7 stages)',
+                  'Lead Lists & organization',
                   'CSV export',
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2.5">
@@ -243,26 +297,56 @@ export default function LandingPage() {
         </div>
       </section>
 
+      {/* FAQ */}
+      <section className="bg-white py-24 px-6 border-t border-slate-100">
+        <div className="max-w-2xl mx-auto">
+          <div className="text-center mb-14">
+            <h2 className="text-3xl font-bold text-slate-900 mb-3">Common questions</h2>
+          </div>
+          <div className="space-y-8">
+            {[
+              {
+                q: 'Does this work in my city?',
+                a: 'Yes. NoSiteFinder searches Google Maps, which covers businesses in every city and country globally. If a business is listed on Google Maps, we can find it.',
+              },
+              {
+                q: 'Do I need a credit card to start?',
+                a: 'No. The free plan gives you 10 searches with no payment information required. Upgrade only when you need more.',
+              },
+              {
+                q: 'What happens to my leads if I cancel?',
+                a: 'Your saved leads, lists, and pipeline data are retained. You can export everything at any time.',
+              },
+            ].map(({ q, a }) => (
+              <div key={q} className="border-b border-slate-100 pb-8 last:border-0 last:pb-0">
+                <p className="font-semibold text-slate-900 mb-1.5">{q}</p>
+                <p className="text-slate-500 text-sm leading-relaxed">{a}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      </section>
+
       {/* Dark CTA */}
       <section className="bg-slate-900 py-20 px-6">
         <div className="max-w-2xl mx-auto text-center">
           <h2 className="text-3xl font-bold text-white mb-4">
-            Your next 10 clients are on Google Maps
+            Your next client already needs a website.<br />You just haven&apos;t found them yet.
           </h2>
           <p className="text-slate-400 mb-8 leading-relaxed">
-            They just don&apos;t have a website yet. Start finding them today — free, no credit card needed.
+            Start with 10 free searches. No credit card, no commitment.
           </p>
           <Link
             href="/sign-up"
             className="inline-block bg-blue-600 hover:bg-blue-500 text-white font-semibold px-8 py-4 rounded-xl text-lg transition-colors shadow-lg"
           >
-            Start free — 10 searches on us
+            Start finding clients — free
           </Link>
         </div>
       </section>
 
       {/* Footer */}
-      <footer className="bg-slate-900 border-t border-slate-800 py-8 px-6">
+      <footer className="bg-white border-t border-slate-200 py-8 px-6">
         <div className="max-w-6xl mx-auto flex flex-col sm:flex-row items-center justify-between gap-4 text-sm">
           <div className="flex items-center gap-2">
             <span className="w-6 h-6 bg-blue-600 rounded-md flex items-center justify-center flex-shrink-0">
@@ -270,9 +354,9 @@ export default function LandingPage() {
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17.657 16.657L13.414 20.9a1.998 1.998 0 01-2.827 0l-4.244-4.243a8 8 0 1111.314 0z" />
               </svg>
             </span>
-            <span className="text-slate-300 font-medium">No-Site Finder</span>
+            <span className="text-slate-700 font-medium">NoSiteFinder</span>
           </div>
-          <p className="text-slate-500">Built for web designers and agencies</p>
+          <p className="text-slate-400">© 2025 NoSiteFinder · Built for web designers and agencies</p>
         </div>
       </footer>
     </div>
