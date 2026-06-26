@@ -13,7 +13,7 @@ export function PaywallModal({ onClose }: PaywallModalProps) {
         <div className="text-center space-y-2">
           <div className="text-4xl">🔍</div>
           <h2 className="text-2xl font-bold text-gray-900">
-            You&apos;ve used all 10 free searches
+            You&apos;ve used all 5 free searches
           </h2>
           <p className="text-gray-500">
             Upgrade to Pro for 150 searches/month and unlock unlimited lead finding.

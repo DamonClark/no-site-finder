@@ -74,7 +74,7 @@ export default function LandingPage() {
               View pricing
             </a>
           </div>
-          <p className="text-sm text-slate-400 mt-5">No credit card required · 10 searches free · Cancel anytime</p>
+          <p className="text-sm text-slate-400 mt-5">No credit card required · 5 searches free · Cancel anytime</p>
 
           {/* Product preview */}
           <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto text-left">
@@ -230,7 +230,7 @@ export default function LandingPage() {
               </div>
               <ul className="space-y-3 text-sm text-slate-600">
                 {[
-                  '10 searches/month',
+                  '5 searches/month',
                   'Single keyword search',
                   'Lead scoring + filters',
                   'Basic pipeline tracking',
@@ -311,7 +311,7 @@ export default function LandingPage() {
               },
               {
                 q: 'Do I need a credit card to start?',
-                a: 'No. The free plan gives you 10 searches with no payment information required. Upgrade only when you need more.',
+                a: 'No. The free plan gives you 5 searches with no payment information required. Upgrade only when you need more.',
               },
               {
                 q: 'What happens to my leads if I cancel?',
@@ -334,7 +334,7 @@ export default function LandingPage() {
             Your next client already needs a website.<br />You just haven&apos;t found them yet.
           </h2>
           <p className="text-slate-400 mb-8 leading-relaxed">
-            Start with 10 free searches. No credit card, no commitment.
+            Start with 5 free searches. No credit card, no commitment.
           </p>
           <Link
             href="/sign-up"

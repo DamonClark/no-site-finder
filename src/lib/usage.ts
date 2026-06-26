@@ -17,7 +17,7 @@ async function ensureUser(clerkId: string) {
       email: `${clerkId}@clerk.placeholder`,
       plan: 'free',
       searchCount: 0,
-      searchLimit: 10,
+      searchLimit: 5,
     },
   });
 }
