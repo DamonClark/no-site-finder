@@ -1326,7 +1326,9 @@ export default function Home() {
                               )}
                             </>
                           ) : (
-                            <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">No website</span>
+                            <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                              No website{lead.websiteConfidence === 'high' ? ' ✓' : lead.websiteConfidence === 'low' ? ' ?' : ''}
+                            </span>
                           )}
                         </div>
 

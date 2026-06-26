@@ -1,5 +1,6 @@
 import type { Business } from '@/types';
 import { analyzeWebsite } from './website-intelligence';
+import { validateWebsite } from './website-validation';
 
 export type { Business };
 
@@ -146,6 +147,8 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
       emailSource: null,
       ownerName: null,
       enriched: false,
+      websiteConfidence: null,
+      websiteValidationReason: null,
     });
   }
 
@@ -162,6 +165,31 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
     );
     batch.forEach(({ b }, j) => {
       b.websiteIntelligence = results[j];
+    });
+  }
+
+  // Validate website determination for non-ok businesses via Claude
+  const VALIDATION_BATCH = 10;
+  const validationTargets = businesses.filter((b) => b.websiteStatus !== 'ok');
+
+  for (let v = 0; v < validationTargets.length; v += VALIDATION_BATCH) {
+    const batch = validationTargets.slice(v, v + VALIDATION_BATCH);
+    const results = await Promise.all(batch.map((b) => validateWebsite(b)));
+    batch.forEach((b, j) => {
+      const result = results[j];
+      if (!result) return;
+      b.websiteConfidence = result.confidence;
+      b.websiteValidationReason = result.reason;
+      // If Claude found a real website we missed, update the business
+      if (result.has_website && result.website && !b.hasWebsite) {
+        const normalized = result.website.startsWith('http') ? result.website : `https://${result.website}`;
+        if (!isSocialOrDirectory(normalized)) {
+          b.hasWebsite = true;
+          b.website = normalized;
+          b.websiteStatus = 'ok';
+          b.leadScore = 0;
+        }
+      }
     });
   }
 

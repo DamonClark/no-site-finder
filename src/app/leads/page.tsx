@@ -472,7 +472,9 @@ export default function LeadsPage() {
                       )}
                       <div className="flex items-center gap-1.5">
                         {!s.hasWebsite && (
-                          <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">No website</span>
+                          <span className="text-xs font-semibold text-orange-600 bg-orange-50 border border-orange-200 px-2 py-0.5 rounded-full">
+                            No website{s.websiteConfidence === 'high' ? ' ✓' : s.websiteConfidence === 'low' ? ' ?' : ''}
+                          </span>
                         )}
                         {s.hasWebsite && s.websiteStatus === 'broken' && (
                           <span className="text-xs font-medium text-red-600 bg-red-50 border border-red-200 px-1.5 py-0.5 rounded">Broken</span>

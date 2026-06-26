@@ -61,6 +61,9 @@ export interface Business {
   emailSource: 'hunter' | null;
   ownerName: string | null;
   enriched: boolean;
+  // Website confidence validation (populated during batch processing)
+  websiteConfidence: 'high' | 'medium' | 'low' | null;
+  websiteValidationReason: string | null;
   // Website intelligence (populated during batch processing)
   websiteIntelligence?: WebsiteIntelligence | null;
 }
