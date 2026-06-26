@@ -1,9 +1,10 @@
 import { NextResponse } from 'next/server';
 import { auth, currentUser } from '@clerk/nextjs/server';
-import { stripe, PRO_PRICE_ID } from '@/lib/stripe';
+import { getStripe, PRO_PRICE_ID } from '@/lib/stripe';
 import { prisma } from '@/lib/db';
 
 export async function POST() {
+  const stripe = getStripe();
   const { userId } = await auth();
   if (!userId) return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
 

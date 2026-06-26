@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { stripe, PRO_SEARCH_LIMIT, FREE_SEARCH_LIMIT } from '@/lib/stripe';
+import { getStripe, PRO_SEARCH_LIMIT, FREE_SEARCH_LIMIT } from '@/lib/stripe';
 import { prisma } from '@/lib/db';
 import type Stripe from 'stripe';
 
@@ -17,6 +17,7 @@ async function getRawBody(req: NextRequest): Promise<Buffer> {
 }
 
 export async function POST(req: NextRequest) {
+  const stripe = getStripe();
   const sig = req.headers.get('stripe-signature');
   if (!sig) return NextResponse.json({ error: 'No signature' }, { status: 400 });
 
