@@ -23,7 +23,7 @@ model User {
   email                  String     @unique
   plan                   String     @default("free")
   searchCount            Int        @default(0)
-  searchLimit            Int        @default(10)
+  searchLimit            Int        @default(5)
   stripeCustomerId       String?    @unique
   stripeSubscriptionId   String?    @unique
   stripePriceId          String?
