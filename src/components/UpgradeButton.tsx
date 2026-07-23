@@ -1,6 +1,7 @@
 'use client';
 
 import { useState } from 'react';
+import { track } from '@vercel/analytics';
 
 interface UpgradeButtonProps {
   className?: string;
@@ -11,6 +12,7 @@ export function UpgradeButton({ className, label = 'Upgrade to Pro' }: UpgradeBu
   const [loading, setLoading] = useState(false);
 
   const handleUpgrade = async () => {
+    track('upgrade_clicked');
     setLoading(true);
     try {
       const res = await fetch('/api/billing/checkout', { method: 'POST' });

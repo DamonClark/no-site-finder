@@ -12,5 +12,5 @@ export function getStripe(): Stripe {
 }
 
 export const PRO_PRICE_ID = process.env.NEXT_PUBLIC_STRIPE_PRO_PRICE_ID ?? '';
-export const PRO_SEARCH_LIMIT = 150;
-export const FREE_SEARCH_LIMIT = 5;
+export const PRO_SEARCH_LIMIT = 50;
+export const FREE_SEARCH_LIMIT = 3;

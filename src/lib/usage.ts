@@ -1,5 +1,6 @@
 import { auth } from '@clerk/nextjs/server';
 import { prisma } from './db';
+import { FREE_SEARCH_LIMIT } from './stripe';
 
 export interface UsageResult {
   allowed: boolean;
@@ -17,7 +18,7 @@ async function ensureUser(clerkId: string) {
       email: `${clerkId}@clerk.placeholder`,
       plan: 'free',
       searchCount: 0,
-      searchLimit: 5,
+      searchLimit: FREE_SEARCH_LIMIT,
     },
   });
 }

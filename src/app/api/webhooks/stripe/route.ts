@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getStripe, PRO_SEARCH_LIMIT, FREE_SEARCH_LIMIT } from '@/lib/stripe';
 import { prisma } from '@/lib/db';
+import { track } from '@vercel/analytics/server';
 import type Stripe from 'stripe';
 
 export const runtime = 'nodejs';
@@ -54,6 +55,7 @@ export async function POST(req: NextRequest) {
               : null,
           },
         });
+        await track('subscription_started');
         break;
       }
 

@@ -1,12 +1,15 @@
 'use client';
 
 import { useState, useMemo, useEffect } from 'react';
+import { track } from '@vercel/analytics';
 import type { Business, UserLead, LeadNote, PipelineStatus, LeadList } from '@/types';
 import { INDUSTRY_GROUPS, recentSearches } from '@/lib/industry-presets';
 import { UsageBar } from '@/components/UsageBar';
 import { PaywallModal } from '@/components/PaywallModal';
+import { ExportPaywallModal } from '@/components/ExportPaywallModal';
 import { UpgradeButton } from '@/components/UpgradeButton';
 import { AppNav } from '@/components/AppNav';
+import { TalkWithFounder } from '@/components/TalkWithFounder';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -383,6 +386,7 @@ export default function Home() {
 
   const [usage, setUsage] = useState<UsageState | null>(null);
   const [showPaywall, setShowPaywall] = useState(false);
+  const [showExportPaywall, setShowExportPaywall] = useState(false);
   const [upgradedBanner, setUpgradedBanner] = useState(false);
 
   // ── Pipeline state ──
@@ -518,6 +522,15 @@ export default function Home() {
     navigator.clipboard.writeText(email);
     setCopiedEmail(email);
     setTimeout(() => setCopiedEmail(null), 2000);
+  };
+
+  const handleExportClick = (businesses: Business[], filename?: string) => {
+    track('csv_export_attempted');
+    if (usage?.plan === 'pro') {
+      exportCSV(businesses, filename);
+    } else {
+      setShowExportPaywall(true);
+    }
   };
 
   const handleEnrich = async () => {
@@ -726,6 +739,7 @@ export default function Home() {
   return (
     <div className="min-h-screen bg-slate-50">
       {showPaywall && <PaywallModal onClose={() => setShowPaywall(false)} />}
+      {showExportPaywall && <ExportPaywallModal onClose={() => setShowExportPaywall(false)} />}
 
       {notesModalLead && (
         <NotesModal
@@ -812,7 +826,7 @@ export default function Home() {
 
         {upgradedBanner && (
           <div className="bg-emerald-50 border border-emerald-200 text-emerald-800 text-sm rounded-xl px-4 py-3 flex items-center gap-2">
-            🎉 Welcome to Pro! You now have 150 searches/month.
+            🎉 Welcome to Pro! You now have 50 searches/month.
           </div>
         )}
 
@@ -821,6 +835,8 @@ export default function Home() {
             ⚡ Results loaded from cache · Refreshed within 48 hours
           </div>
         )}
+
+        <TalkWithFounder />
 
         {/* Search card */}
         <div className="bg-white rounded-xl border border-slate-200 shadow-sm p-5">
@@ -1198,7 +1214,7 @@ export default function Home() {
                 )}
 
                 <button
-                  onClick={() => exportCSV(pipelineFiltered)}
+                  onClick={() => handleExportClick(pipelineFiltered)}
                   className="inline-flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-700 text-white px-3 py-1.5 rounded-lg text-sm font-medium transition-colors"
                 >
                   Export CSV
@@ -1405,7 +1421,7 @@ export default function Home() {
                           Profile ↗
                         </a>
                         <button
-                          onClick={() => exportCSV([lead], `${lead.name.replace(/[^a-z0-9]/gi, '_')}.csv`)}
+                          onClick={() => handleExportClick([lead], `${lead.name.replace(/[^a-z0-9]/gi, '_')}.csv`)}
                           className="text-xs bg-slate-50 hover:bg-slate-100 text-slate-600 border border-slate-200 px-2.5 py-1 rounded-lg transition-colors"
                         >
                           Export

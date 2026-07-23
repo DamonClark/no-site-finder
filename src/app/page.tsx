@@ -1,6 +1,7 @@
 import Link from 'next/link';
 import { SignedIn, SignedOut } from '@clerk/nextjs';
 import { UpgradeButton } from '@/components/UpgradeButton';
+import { PricingViewTracker } from '@/components/PricingViewTracker';
 
 export default function LandingPage() {
   return (
@@ -74,7 +75,7 @@ export default function LandingPage() {
               View pricing
             </a>
           </div>
-          <p className="text-sm text-slate-400 mt-5">No credit card required · 5 searches free · Cancel anytime</p>
+          <p className="text-sm text-slate-400 mt-5">No credit card required · 3 searches free · Cancel anytime</p>
 
           {/* Product preview */}
           <div className="mt-16 grid grid-cols-1 sm:grid-cols-2 gap-4 max-w-2xl mx-auto text-left">
@@ -200,7 +201,7 @@ export default function LandingPage() {
             {[
               { stat: '7', label: 'Pipeline stages — New to Won' },
               { stat: '<60s', label: 'To build a targeted prospect list' },
-              { stat: '150', label: 'Searches/month on Pro' },
+              { stat: '50', label: 'Searches/month on Pro' },
             ].map(({ stat, label }) => (
               <div key={label}>
                 <div className="text-3xl font-extrabold">{stat}</div>
@@ -213,10 +214,11 @@ export default function LandingPage() {
 
       {/* Pricing */}
       <section id="pricing" className="bg-slate-50 py-24 px-6 border-t border-slate-100">
+        <PricingViewTracker />
         <div className="max-w-3xl mx-auto">
           <div className="text-center mb-14">
             <h2 className="text-3xl font-bold text-slate-900 mb-3">Simple pricing</h2>
-            <p className="text-slate-500">Start free. Upgrade when you need more.</p>
+            <p className="text-slate-500">Find businesses that need websites and discover new client opportunities.</p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             {/* Free */}
@@ -226,15 +228,14 @@ export default function LandingPage() {
                 <div className="flex items-end gap-1">
                   <span className="text-5xl font-extrabold text-slate-900">$0</span>
                 </div>
-                <p className="text-slate-400 text-sm mt-1">forever</p>
+                <p className="text-slate-400 text-sm mt-1">Try NoSiteFinder with 3 free searches.</p>
               </div>
               <ul className="space-y-3 text-sm text-slate-600">
                 {[
-                  '5 searches/month',
+                  '3 searches total',
                   'Single keyword search',
                   'Lead scoring + filters',
                   'Basic pipeline tracking',
-                  'CSV export',
                 ].map((f) => (
                   <li key={f} className="flex items-center gap-2.5">
                     <span className="w-5 h-5 rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-600 text-xs font-bold flex-shrink-0">✓</span>
@@ -267,7 +268,7 @@ export default function LandingPage() {
               </div>
               <ul className="space-y-3 text-sm text-blue-100">
                 {[
-                  '150 searches/month',
+                  '50 searches/month',
                   'Radius search (any area)',
                   'Website intelligence signals',
                   'All 50+ industry presets',
@@ -311,7 +312,7 @@ export default function LandingPage() {
               },
               {
                 q: 'Do I need a credit card to start?',
-                a: 'No. The free plan gives you 5 searches with no payment information required. Upgrade only when you need more.',
+                a: 'No. The free plan gives you 3 searches with no payment information required. Upgrade only when you need more.',
               },
               {
                 q: 'What happens to my leads if I cancel?',
@@ -334,7 +335,7 @@ export default function LandingPage() {
             Your next client already needs a website.<br />You just haven&apos;t found them yet.
           </h2>
           <p className="text-slate-400 mb-8 leading-relaxed">
-            Start with 5 free searches. No credit card, no commitment.
+            Start with 3 free searches. No credit card, no commitment.
           </p>
           <Link
             href="/sign-up"
