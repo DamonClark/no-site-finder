@@ -2,10 +2,48 @@ import Link from 'next/link';
 import { SignedIn, SignedOut } from '@clerk/nextjs';
 import { UpgradeButton } from '@/components/UpgradeButton';
 import { PricingViewTracker } from '@/components/PricingViewTracker';
+import { BRAND_NAME, SITE_URL, SITE_DESCRIPTION, FAQ_ITEMS } from '@/lib/site-content';
+
+const PRICING_UPDATED = '2026-07-28';
+
+const softwareApplicationSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: BRAND_NAME,
+  applicationCategory: 'BusinessApplication',
+  operatingSystem: 'Web',
+  description: SITE_DESCRIPTION,
+  url: SITE_URL,
+  offers: [
+    { '@type': 'Offer', name: 'Free', price: '0', priceCurrency: 'USD' },
+    { '@type': 'Offer', name: 'Pro', price: '29', priceCurrency: 'USD', priceSpecification: {
+      '@type': 'UnitPriceSpecification', price: '29', priceCurrency: 'USD', billingDuration: 'P1M',
+    } },
+  ],
+};
+
+const faqPageSchema = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: FAQ_ITEMS.map(({ q, a }) => ({
+    '@type': 'Question',
+    name: q,
+    acceptedAnswer: { '@type': 'Answer', text: a },
+  })),
+};
 
 export default function LandingPage() {
   return (
     <div className="min-h-screen bg-white text-gray-900">
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(softwareApplicationSchema) }}
+      />
+      <script
+        type="application/ld+json"
+        dangerouslySetInnerHTML={{ __html: JSON.stringify(faqPageSchema) }}
+      />
+
       {/* Sticky Nav */}
       <nav className="sticky top-0 z-50 bg-white/90 backdrop-blur-sm border-b border-slate-200">
         <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
@@ -196,7 +234,7 @@ export default function LandingPage() {
 
       {/* Stat strip */}
       <section className="bg-slate-900 py-14 px-6">
-        <div className="max-w-4xl mx-auto">
+        <aside aria-label="Key product numbers" className="max-w-4xl mx-auto">
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-8 text-center text-white">
             {[
               { stat: '7', label: 'Pipeline stages — New to Won' },
@@ -209,7 +247,7 @@ export default function LandingPage() {
               </div>
             ))}
           </div>
-        </div>
+        </aside>
       </section>
 
       {/* Pricing */}
@@ -219,6 +257,9 @@ export default function LandingPage() {
           <div className="text-center mb-14">
             <h2 className="text-3xl font-bold text-slate-900 mb-3">Simple pricing</h2>
             <p className="text-slate-500">Find businesses that need websites and discover new client opportunities.</p>
+            <p className="text-xs text-slate-400 mt-2">
+              Pricing last updated <time dateTime={PRICING_UPDATED}>July 28, 2026</time>
+            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             {/* Free */}
@@ -305,20 +346,7 @@ export default function LandingPage() {
             <h2 className="text-3xl font-bold text-slate-900 mb-3">Common questions</h2>
           </div>
           <div className="space-y-8">
-            {[
-              {
-                q: 'Does this work in my city?',
-                a: 'Yes. NoSiteFinder searches Google Maps, which covers businesses in every city and country globally. If a business is listed on Google Maps, we can find it.',
-              },
-              {
-                q: 'Do I need a credit card to start?',
-                a: 'No. The free plan gives you 3 searches with no payment information required. Upgrade only when you need more.',
-              },
-              {
-                q: 'What happens to my leads if I cancel?',
-                a: 'Your saved leads, lists, and pipeline data are retained. You can export everything at any time.',
-              },
-            ].map(({ q, a }) => (
+            {FAQ_ITEMS.map(({ q, a }) => (
               <div key={q} className="border-b border-slate-100 pb-8 last:border-0 last:pb-0">
                 <p className="font-semibold text-slate-900 mb-1.5">{q}</p>
                 <p className="text-slate-500 text-sm leading-relaxed">{a}</p>

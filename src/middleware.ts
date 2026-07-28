@@ -1,4 +1,5 @@
 import { clerkMiddleware, createRouteMatcher } from '@clerk/nextjs/server';
+import { NextResponse } from 'next/server';
 import type { NextFetchEvent, NextRequest } from 'next/server';
 
 const isPublic = createRouteMatcher([
@@ -6,8 +7,14 @@ const isPublic = createRouteMatcher([
   '/sign-in(.*)',
   '/sign-up(.*)',
   '/preview(.*)',
-  '/debug(.*)',
   '/api/webhooks/(.*)',
+  '/robots.txt',
+  '/llms.txt',
+  '/llms-full.txt',
+  '/sitemap.xml',
+  '/ai.txt',
+  '/sitemap-(.*)',
+  '/.well-known/(.*)',
 ]);
 
 // Fires one background GET per page view to Arrivl's intake endpoint so it can
@@ -38,11 +45,21 @@ function trackArrivl(request: NextRequest, event: NextFetchEvent) {
   );
 }
 
+// Agents that send `Accept: text/markdown` get the plain-text content dump
+// (same content as /llms-full.txt) instead of the rendered HTML page.
+function wantsMarkdown(request: NextRequest): boolean {
+  return request.nextUrl.pathname === '/' && (request.headers.get('accept') ?? '').includes('text/markdown');
+}
+
 export default clerkMiddleware(async (auth, req, event) => {
   if (!isPublic(req)) {
     await auth.protect();
   }
   trackArrivl(req, event);
+
+  if (wantsMarkdown(req)) {
+    return NextResponse.rewrite(new URL('/llms-full.txt', req.url));
+  }
 });
 
 export const config = {
