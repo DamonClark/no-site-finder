@@ -4,7 +4,7 @@ import { UpgradeModal } from './UpgradeModal';
 
 const BENEFITS = [
   'Export leads as CSV',
-  '50 searches per month',
+  '20 searches per month',
   'Find more businesses that need websites',
 ];
 

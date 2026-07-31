@@ -54,7 +54,7 @@ Try NoSiteFinder with 3 free searches.
 
 **Pro — $29/month**
 Find businesses that need websites and discover new client opportunities.
-- 50 searches/month
+- 20 searches/month
 - Radius search (any area)
 - Website intelligence signals
 - All 50+ industry presets

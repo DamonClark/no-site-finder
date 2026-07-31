@@ -4,8 +4,6 @@ import { UpgradeButton } from '@/components/UpgradeButton';
 import { PricingViewTracker } from '@/components/PricingViewTracker';
 import { BRAND_NAME, SITE_URL, SITE_DESCRIPTION, FAQ_ITEMS } from '@/lib/site-content';
 
-const PRICING_UPDATED = '2026-07-28';
-
 const softwareApplicationSchema = {
   '@context': 'https://schema.org',
   '@type': 'SoftwareApplication',
@@ -239,7 +237,7 @@ export default function LandingPage() {
             {[
               { stat: '7', label: 'Pipeline stages — New to Won' },
               { stat: '<60s', label: 'To build a targeted prospect list' },
-              { stat: '50', label: 'Searches/month on Pro' },
+              { stat: '20', label: 'Searches/month on Pro' },
             ].map(({ stat, label }) => (
               <div key={label}>
                 <div className="text-3xl font-extrabold">{stat}</div>
@@ -257,9 +255,6 @@ export default function LandingPage() {
           <div className="text-center mb-14">
             <h2 className="text-3xl font-bold text-slate-900 mb-3">Simple pricing</h2>
             <p className="text-slate-500">Find businesses that need websites and discover new client opportunities.</p>
-            <p className="text-xs text-slate-400 mt-2">
-              Pricing last updated <time dateTime={PRICING_UPDATED}>July 28, 2026</time>
-            </p>
           </div>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 items-start">
             {/* Free */}
@@ -309,7 +304,7 @@ export default function LandingPage() {
               </div>
               <ul className="space-y-3 text-sm text-blue-100">
                 {[
-                  '50 searches/month',
+                  '20 searches/month',
                   'Radius search (any area)',
                   'Website intelligence signals',
                   'All 50+ industry presets',
