@@ -30,8 +30,45 @@ model User {
   stripeCurrentPeriodEnd DateTime?
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
+  calendlyUrl            String?
   leads                  UserLead[]
   lists                  LeadList[]
+  searchEvents           SearchEvent[]
+  followUpDrafts         FollowUpEmailDraft[]
+}
+
+model SearchEvent {
+  id             String              @id @default(cuid())
+  userId         String
+  mode           String // 'keyword' | 'radius'
+  rawQuery       String
+  locationRaw    String
+  scope          String // 'city' | 'state' | 'country' | 'empty'
+  resultCount    Int
+  noWebsiteCount Int
+  createdAt      DateTime            @default(now())
+  user           User                @relation(fields: [userId], references: [id])
+  followUpDraft  FollowUpEmailDraft?
+
+  @@index([userId])
+  @@index([createdAt])
+}
+
+model FollowUpEmailDraft {
+  id            String    @id @default(cuid())
+  userId        String
+  searchEventId String    @unique
+  emailType     String // 'state_level' | 'city_no_convert'
+  subject       String
+  body          String
+  status        String    @default("pending") // 'pending' | 'sent' | 'skipped'
+  createdAt     DateTime  @default(now())
+  sentAt        DateTime?
+  user          User        @relation(fields: [userId], references: [id])
+  searchEvent   SearchEvent @relation(fields: [searchEventId], references: [id])
+
+  @@index([userId])
+  @@index([status])
 }
 
 model UserLead {

@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
-import { checkAndIncrementUsage } from '@/lib/usage';
+import { checkAndIncrementUsage, type UsageResult } from '@/lib/usage';
 import { makeRadiusCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
+import { classifyLocation } from '@/lib/geo-scope';
+import { prisma } from '@/lib/db';
+import type { Business } from '@/types';
 
 // ─── Geography helpers ────────────────────────────────────────────────────────
 
@@ -100,7 +103,7 @@ function extractCity(address: string): string {
 // ─── Route handler ────────────────────────────────────────────────────────────
 
 export async function POST(req: Request) {
-  let usage;
+  let usage: UsageResult;
   try {
     usage = await checkAndIncrementUsage();
   } catch (err) {
@@ -111,9 +114,11 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: `Server error: ${msg}` }, { status: 500 });
   }
+  const clientUsage = { searchCount: usage.searchCount, searchLimit: usage.searchLimit, plan: usage.plan };
+
   if (!usage.allowed) {
     return NextResponse.json(
-      { error: 'LIMIT_REACHED', message: "You've hit your free search limit", upgrade_required: true, usage },
+      { error: 'LIMIT_REACHED', message: "You've hit your free search limit", upgrade_required: true, usage: clientUsage },
       { status: 402 }
     );
   }
@@ -129,9 +134,30 @@ export async function POST(req: Request) {
   if (!baseCity?.trim()) return NextResponse.json({ error: 'baseCity is required' }, { status: 400 });
   if (!rawRadius) return NextResponse.json({ error: 'radiusMiles is required' }, { status: 400 });
 
+  const scope = classifyLocation(baseCity);
+
+  function logSearchEvent(businesses: Business[]) {
+    prisma.searchEvent
+      .create({
+        data: {
+          userId: usage.dbUserId,
+          mode: 'radius',
+          rawQuery: `${category} in ${baseCity}`,
+          locationRaw: baseCity,
+          scope,
+          resultCount: businesses.length,
+          noWebsiteCount: businesses.filter((b) => !b.hasWebsite).length,
+        },
+      })
+      .catch((e) => console.error('[search-radius] SearchEvent write failed:', e));
+  }
+
   const cacheKey = makeRadiusCacheKey(category, baseCity, radiusMiles);
   const cached = await getCachedSearch(cacheKey).catch(() => null);
-  if (cached) return NextResponse.json({ businesses: cached.results, meta: cached.meta, usage, fromCache: true });
+  if (cached) {
+    logSearchEvent(cached.results as unknown as Business[]);
+    return NextResponse.json({ businesses: cached.results, meta: cached.meta, usage: clientUsage, fromCache: true });
+  }
 
   // Step 1: Geocode the base city
   const center = await geocodeCity(baseCity, apiKey);
@@ -248,6 +274,7 @@ export async function POST(req: Request) {
   };
 
   setCachedSearch(cacheKey, businesses, meta).catch((e) => console.error('[search-radius] cache write failed:', e));
+  logSearchEvent(businesses);
 
-  return NextResponse.json({ businesses, meta, usage });
+  return NextResponse.json({ businesses, meta, usage: clientUsage });
 }

@@ -4,6 +4,7 @@ import { useState, useMemo, useEffect } from 'react';
 import { track } from '@vercel/analytics';
 import type { Business, UserLead, LeadNote, PipelineStatus, LeadList } from '@/types';
 import { INDUSTRY_GROUPS, recentSearches } from '@/lib/industry-presets';
+import { classifyLocation, getStateAbbreviation, STATE_EXAMPLE_CITIES, type LocationScope } from '@/lib/geo-scope';
 import { UsageBar } from '@/components/UsageBar';
 import { PaywallModal } from '@/components/PaywallModal';
 import { ExportPaywallModal } from '@/components/ExportPaywallModal';
@@ -160,6 +161,48 @@ function RecentChips({ items, onSelect }: { items: string[]; onSelect: (v: strin
           {item}
         </button>
       ))}
+    </div>
+  );
+}
+
+function LocationWarning({
+  scope,
+  stateAbbr,
+  onPickExample,
+}: {
+  scope: LocationScope;
+  stateAbbr: string | null;
+  onPickExample: (city: string) => void;
+}) {
+  if (scope === 'city') return null;
+
+  const message =
+    scope === 'empty'
+      ? 'Add a city or town for best results — e.g. "in Austin, TX".'
+      : scope === 'country'
+      ? "NoSiteFinder searches one city or town at a time — nationwide search isn't supported yet."
+      : 'NoSiteFinder searches one city or town at a time — try a specific city instead of the whole state.';
+
+  const examples = stateAbbr ? STATE_EXAMPLE_CITIES[stateAbbr] : undefined;
+
+  return (
+    <div className="mt-2 text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
+      <p>{message}</p>
+      {examples && examples.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap mt-1.5">
+          <span className="text-amber-600 shrink-0">Try:</span>
+          {examples.map((city) => (
+            <button
+              key={city}
+              type="button"
+              onClick={() => onPickExample(`${city}, ${stateAbbr}`)}
+              className="bg-white border border-amber-300 text-amber-800 rounded-full px-2.5 py-0.5 hover:bg-amber-100 transition-colors"
+            >
+              {city}, {stateAbbr}
+            </button>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -365,6 +408,15 @@ export default function Home() {
   const [category, setCategory] = useState('');
   const [baseCity, setBaseCity] = useState('');
   const [radiusMiles, setRadiusMiles] = useState<number>(25);
+
+  // ── Location scope guardrail ──
+  const queryKeyword = useMemo(() => query.split(/\s+in\s+/i)[0].trim(), [query]);
+  const queryLocationRaw = useMemo(() => query.split(/\s+in\s+/i)[1]?.trim() ?? '', [query]);
+  const queryLocationScope = useMemo(() => classifyLocation(queryLocationRaw), [queryLocationRaw]);
+  const queryStateAbbr = useMemo(() => getStateAbbreviation(queryLocationRaw), [queryLocationRaw]);
+
+  const baseCityScope = useMemo(() => classifyLocation(baseCity), [baseCity]);
+  const baseCityStateAbbr = useMemo(() => getStateAbbreviation(baseCity), [baseCity]);
 
   const [recentQueryList, setRecentQueryList] = useState<string[]>([]);
   const [recentCatList, setRecentCatList] = useState<string[]>([]);
@@ -858,6 +910,10 @@ export default function Home() {
             ))}
           </div>
 
+          <p className="text-xs text-slate-400 mb-3">
+            Search one city or town at a time — statewide and nationwide searches return very few results.
+          </p>
+
           {searchMode === 'single' ? (
             <div>
               <div className="flex items-center gap-2 mb-3 flex-wrap">
@@ -886,6 +942,13 @@ export default function Home() {
                   ) : 'Search'}
                 </button>
               </div>
+              {query.trim() && (
+                <LocationWarning
+                  scope={queryLocationScope}
+                  stateAbbr={queryStateAbbr}
+                  onPickExample={(city) => setQuery(`${queryKeyword || query.trim()} in ${city}`)}
+                />
+              )}
               <RecentChips items={recentQueryList} onSelect={(v) => setQuery(v)} />
             </div>
           ) : (
@@ -916,6 +979,13 @@ export default function Home() {
                     onKeyDown={(e) => e.key === 'Enter' && handleSearch()}
                     className="border border-slate-200 rounded-lg px-3 py-2.5 text-sm text-slate-900 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500/30 focus:border-blue-400 transition-colors"
                   />
+                  {baseCity.trim() && (
+                    <LocationWarning
+                      scope={baseCityScope}
+                      stateAbbr={baseCityStateAbbr}
+                      onPickExample={(city) => setBaseCity(city)}
+                    />
+                  )}
                 </label>
               </div>
 

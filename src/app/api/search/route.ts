@@ -1,7 +1,10 @@
 import { NextResponse } from 'next/server';
 import { processBatch } from '@/lib/places';
-import { checkAndIncrementUsage } from '@/lib/usage';
+import { checkAndIncrementUsage, type UsageResult } from '@/lib/usage';
 import { makeKeywordCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
+import { classifyLocation } from '@/lib/geo-scope';
+import { prisma } from '@/lib/db';
+import type { Business } from '@/types';
 
 // Common trade/service synonyms to broaden search coverage beyond prominent businesses
 const SYNONYM_MAP: Record<string, string[]> = {
@@ -18,7 +21,7 @@ const SYNONYM_MAP: Record<string, string[]> = {
 };
 
 export async function POST(req: Request) {
-  let usage;
+  let usage: UsageResult;
   try {
     usage = await checkAndIncrementUsage();
   } catch (err) {
@@ -29,9 +32,11 @@ export async function POST(req: Request) {
     }
     return NextResponse.json({ error: `Server error: ${msg}` }, { status: 500 });
   }
+  const clientUsage = { searchCount: usage.searchCount, searchLimit: usage.searchLimit, plan: usage.plan };
+
   if (!usage.allowed) {
     return NextResponse.json(
-      { error: 'LIMIT_REACHED', message: "You've hit your free search limit", upgrade_required: true, usage },
+      { error: 'LIMIT_REACHED', message: "You've hit your free search limit", upgrade_required: true, usage: clientUsage },
       { status: 402 }
     );
   }
@@ -43,16 +48,38 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
   }
 
-  const cacheKey = makeKeywordCacheKey(query);
-  const cached = await getCachedSearch(cacheKey).catch(() => null);
-  if (cached) return NextResponse.json({ businesses: cached.results, usage, fromCache: true });
-
   function extractKeyword(q: string): string {
     return q.split(/\s+in\s+/i)[0].trim();
   }
 
   function extractCity(q: string): string {
     return q.split(/\s+in\s+/i)[1]?.trim() ?? '';
+  }
+
+  const locationRaw = extractCity(query);
+  const scope = classifyLocation(locationRaw);
+
+  function logSearchEvent(businesses: Business[]) {
+    prisma.searchEvent
+      .create({
+        data: {
+          userId: usage.dbUserId,
+          mode: 'keyword',
+          rawQuery: query,
+          locationRaw,
+          scope,
+          resultCount: businesses.length,
+          noWebsiteCount: businesses.filter((b) => !b.hasWebsite).length,
+        },
+      })
+      .catch((e) => console.error('[search] SearchEvent write failed:', e));
+  }
+
+  const cacheKey = makeKeywordCacheKey(query);
+  const cached = await getCachedSearch(cacheKey).catch(() => null);
+  if (cached) {
+    logSearchEvent(cached.results as unknown as Business[]);
+    return NextResponse.json({ businesses: cached.results, usage: clientUsage, fromCache: true });
   }
 
   // Build synonym queries: find matching synonyms for the keyword and append the city
@@ -197,6 +224,7 @@ export async function POST(req: Request) {
   console.log(`[search] "${query}" → ${businesses.length} businesses, ${noWebsiteCount} no-website leads`);
 
   setCachedSearch(cacheKey, businesses).catch((e) => console.error('[search] cache write failed:', e));
+  logSearchEvent(businesses);
 
-  return NextResponse.json({ businesses, usage });
+  return NextResponse.json({ businesses, usage: clientUsage });
 }
