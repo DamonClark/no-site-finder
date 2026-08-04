@@ -64,7 +64,7 @@ export async function checkWebsite(url: string): Promise<'ok' | 'broken' | 'slow
 
 export async function fetchDetails(placeId: string, apiKey: string) {
   const res = await fetch(
-    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,website,formatted_address,formatted_phone_number,rating,user_ratings_total,types,url,business_status&key=${apiKey}`
+    `https://maps.googleapis.com/maps/api/place/details/json?place_id=${placeId}&fields=name,website,formatted_address,formatted_phone_number,rating,user_ratings_total,types,url,business_status,editorial_summary,reviews&key=${apiKey}`
   );
   const data = await res.json();
   return data.result ?? null;
@@ -127,6 +127,14 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
     const profileUrl = `https://www.google.com/maps/place/?q=place_id:${placeId}`;
     const rating: number | null = result.rating ?? null;
     const reviewCount: number | null = result.user_ratings_total ?? null;
+    const editorialSummary: string | null = result.editorial_summary?.overview ?? null;
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const reviewSnippets: string[] | null = Array.isArray(result.reviews)
+      ? result.reviews
+          .slice(0, 3)
+          .map((r: any) => (typeof r.text === 'string' ? r.text.slice(0, 200) : ''))
+          .filter(Boolean)
+      : null;
 
     businesses.push({
       placeId,
@@ -149,6 +157,8 @@ export async function processBatch(placeIds: string[], apiKey: string): Promise<
       enriched: false,
       websiteConfidence: null,
       websiteValidationReason: null,
+      editorialSummary,
+      reviewSnippets,
     });
   }
 

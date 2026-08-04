@@ -51,8 +51,26 @@ function wantsMarkdown(request: NextRequest): boolean {
   return request.nextUrl.pathname === '/' && (request.headers.get('accept') ?? '').includes('text/markdown');
 }
 
+function isLocalDevelopmentRequest(req: NextRequest): boolean {
+  const host = req.headers.get('host') ?? '';
+  const hostname = host.split(':')[0].toLowerCase();
+
+  return (
+    process.env.NODE_ENV === 'development' &&
+    (hostname === 'localhost' ||
+      hostname === '127.0.0.1' ||
+      hostname === '0.0.0.0' ||
+      hostname.endsWith('.local') ||
+      hostname.endsWith('.test') ||
+      hostname.includes('lvh.me') ||
+      hostname.startsWith('192.') ||
+      hostname.startsWith('10.') ||
+      hostname.startsWith('172.'))
+  );
+}
+
 export default clerkMiddleware(async (auth, req, event) => {
-  if (!isPublic(req)) {
+  if (!isLocalDevelopmentRequest(req) && !isPublic(req)) {
     await auth.protect();
   }
   trackArrivl(req, event);

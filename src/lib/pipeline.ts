@@ -2,6 +2,7 @@ import type { PipelineStatus } from '@/types';
 
 export const PIPELINE_STATUSES: { value: PipelineStatus; label: string }[] = [
   { value: 'new', label: 'New' },
+  { value: 'message_drafted', label: 'Message Drafted' },
   { value: 'contacted', label: 'Contacted' },
   { value: 'follow_up', label: 'Follow Up' },
   { value: 'meeting_scheduled', label: 'Meeting Scheduled' },
@@ -12,6 +13,7 @@ export const PIPELINE_STATUSES: { value: PipelineStatus; label: string }[] = [
 
 export const PIPELINE_LABELS: Record<PipelineStatus, string> = {
   new: 'New',
+  message_drafted: 'Message Drafted',
   contacted: 'Contacted',
   follow_up: 'Follow Up',
   meeting_scheduled: 'Meeting Scheduled',
@@ -22,6 +24,7 @@ export const PIPELINE_LABELS: Record<PipelineStatus, string> = {
 
 export const PIPELINE_COLORS: Record<PipelineStatus, string> = {
   new: 'bg-blue-50 text-blue-700 border-blue-200',
+  message_drafted: 'bg-cyan-50 text-cyan-700 border-cyan-200',
   contacted: 'bg-indigo-50 text-indigo-700 border-indigo-200',
   follow_up: 'bg-amber-50 text-amber-700 border-amber-200',
   meeting_scheduled: 'bg-violet-50 text-violet-700 border-violet-200',

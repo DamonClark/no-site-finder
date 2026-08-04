@@ -53,6 +53,7 @@ const RADIUS_OPTIONS = [10, 25, 50] as const;
 
 const PIPELINE_STATUSES: { value: PipelineStatus; label: string }[] = [
   { value: 'new', label: 'New' },
+  { value: 'message_drafted', label: 'Message Drafted' },
   { value: 'contacted', label: 'Contacted' },
   { value: 'follow_up', label: 'Follow Up' },
   { value: 'meeting_scheduled', label: 'Meeting Scheduled' },
@@ -357,6 +358,179 @@ function NotesModal({
   );
 }
 
+function CopyField({ label, value }: { label: string; value: string }) {
+  const [copied, setCopied] = useState(false);
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(value);
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="space-y-1.5">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-slate-400 uppercase tracking-wide">{label}</span>
+        <button
+          onClick={handleCopy}
+          className="text-xs bg-blue-50 hover:bg-blue-100 text-blue-700 border border-blue-200 px-2.5 py-1 rounded-lg transition-colors font-medium"
+        >
+          {copied ? '✓ Copied' : '📋 Copy'}
+        </button>
+      </div>
+      <p className="text-sm text-slate-700 whitespace-pre-wrap bg-slate-50 border border-slate-100 rounded-lg p-3">{value}</p>
+    </div>
+  );
+}
+
+interface OutreachResult {
+  previewUrl: string;
+  smsText: string;
+  email: { address: string; subject: string; body: string } | null;
+  socialUrl: string | null;
+  lovableUrl: string;
+}
+
+function OutreachModal({
+  business,
+  currentStatus,
+  currentNoteCount,
+  onClose,
+  onNoteCountChange,
+  onAdvanceStatus,
+}: {
+  business: Business;
+  currentStatus: PipelineStatus | undefined;
+  currentNoteCount: number;
+  onClose: () => void;
+  onNoteCountChange: (count: number) => void;
+  onAdvanceStatus: () => void;
+}) {
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState('');
+  const [result, setResult] = useState<OutreachResult | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch('/api/generate-outreach', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ business }),
+    })
+      .then((r) => r.json())
+      .then((d) => {
+        if (cancelled) return;
+        if (d.error) {
+          setError(d.error);
+          return;
+        }
+        setResult(d);
+
+        // Persist the draft as a note so it's visible later, and advance the
+        // pipeline out of "New" — but don't clobber a lead that's already
+        // further along (e.g. re-generating outreach for a "Won" lead).
+        const noteContent = `Outreach drafted:\n\nPreview: ${d.previewUrl}\n\n${
+          d.email
+            ? `Email to ${d.email.address}\nSubject: ${d.email.subject}\n\n${d.email.body}`
+            : `SMS:\n${d.smsText}`
+        }`;
+        fetch(`/api/leads/${encodeURIComponent(business.placeId)}/notes`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ content: noteContent }),
+        })
+          .then((r) => { if (r.ok) onNoteCountChange(currentNoteCount + 1); })
+          .catch(() => {});
+
+        if (!currentStatus || currentStatus === 'new') {
+          onAdvanceStatus();
+        }
+      })
+      .catch(() => { if (!cancelled) setError('Failed to generate outreach'); })
+      .finally(() => { if (!cancelled) setLoading(false); });
+    return () => { cancelled = true; };
+  }, [business]);
+
+  return (
+    <div className="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
+      <div className="bg-white rounded-2xl shadow-2xl w-full max-w-md max-h-[80vh] flex flex-col">
+        <div className="flex items-center justify-between px-5 pt-5 pb-3 border-b border-slate-100 shrink-0">
+          <div>
+            <h3 className="font-semibold text-slate-900 leading-snug">{business.name}</h3>
+            <p className="text-xs text-slate-400 mt-0.5">Generated Outreach</p>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-slate-400 hover:text-slate-600 text-2xl leading-none w-8 h-8 flex items-center justify-center rounded-full hover:bg-slate-100 transition-colors"
+          >
+            ×
+          </button>
+        </div>
+
+        <div className="flex-1 overflow-y-auto px-5 py-4 space-y-4 min-h-0">
+          {loading && (
+            <div className="text-center py-6">
+              <span className="inline-block w-5 h-5 border-2 border-slate-300 border-t-blue-500 rounded-full animate-spin" />
+              <p className="text-xs text-slate-400 mt-2">Generating site preview + message…</p>
+            </div>
+          )}
+          {!loading && error && (
+            <p className="text-sm text-red-500 text-center py-6">{error}</p>
+          )}
+          {!loading && result && (
+            <>
+              <CopyField label="Preview Site URL" value={result.previewUrl} />
+
+              <a
+                href={result.lovableUrl}
+                target="_blank"
+                rel="noreferrer"
+                className="block text-center w-full bg-violet-600 hover:bg-violet-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+              >
+                🚀 Build Real Site in Lovable
+              </a>
+              <p className="text-xs text-slate-400 -mt-2">
+                Opens Lovable pre-filled with this business's info. Requires your own Lovable account — building runs on your account's credits, not ours.
+              </p>
+
+              {result.email && (
+                <div className="space-y-3 border border-emerald-200 bg-emerald-50/50 rounded-xl p-3">
+                  <p className="text-xs font-semibold text-emerald-700 uppercase tracking-wide">
+                    ✉️ Email found — {result.email.address}
+                  </p>
+                  <CopyField label="Subject" value={result.email.subject} />
+                  <CopyField label="Body" value={result.email.body} />
+                  <a
+                    href={`mailto:${result.email.address}?subject=${encodeURIComponent(result.email.subject)}&body=${encodeURIComponent(result.email.body)}`}
+                    className="block text-center w-full bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium px-4 py-2 rounded-lg transition-colors"
+                  >
+                    Open in Email App
+                  </a>
+                </div>
+              )}
+
+              {!result.email && result.socialUrl && (
+                <p className="text-xs text-slate-500 bg-slate-50 border border-slate-100 rounded-lg p-3">
+                  No email found automatically. This business has a social page —{' '}
+                  <a href={result.socialUrl} target="_blank" rel="noreferrer" className="text-blue-600 hover:underline">
+                    check it manually
+                  </a>{' '}
+                  for contact info.
+                </p>
+              )}
+
+              <CopyField label={result.email ? 'SMS Text (fallback)' : 'SMS Text'} value={result.smsText} />
+              <p className="text-xs text-slate-400">
+                Copy the text above into Google Voice (or your messaging app of choice) and send it yourself.
+              </p>
+            </>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main component ───────────────────────────────────────────────────────────
 
 export default function Home() {
@@ -396,6 +570,7 @@ export default function Home() {
   const [errorLeadId, setErrorLeadId] = useState<string | null>(null);
   const [pipelineFilter, setPipelineFilter] = useState<PipelineStatus | 'all'>('all');
   const [notesModalLead, setNotesModalLead] = useState<Business | null>(null);
+  const [outreachModalLead, setOutreachModalLead] = useState<Business | null>(null);
 
   // ── Lists state ──
   const [lists, setLists] = useState<LeadList[]>([]);
@@ -747,6 +922,17 @@ export default function Home() {
           businessName={notesModalLead.name}
           onClose={() => setNotesModalLead(null)}
           onNoteCountChange={(count) => handleNoteCountChange(notesModalLead.placeId, count)}
+        />
+      )}
+
+      {outreachModalLead && (
+        <OutreachModal
+          business={outreachModalLead}
+          currentStatus={leadMap.get(outreachModalLead.placeId)?.status}
+          currentNoteCount={leadMap.get(outreachModalLead.placeId)?.noteCount ?? 0}
+          onClose={() => setOutreachModalLead(null)}
+          onNoteCountChange={(count) => handleNoteCountChange(outreachModalLead.placeId, count)}
+          onAdvanceStatus={() => handleSaveStatus(outreachModalLead, 'message_drafted')}
         />
       )}
 
@@ -1462,6 +1648,14 @@ export default function Home() {
                           }`}
                         >
                           {currentLead?.noteCount ? `Notes (${currentLead.noteCount})` : 'Notes'}
+                        </button>
+
+                        {/* Outreach button */}
+                        <button
+                          onClick={() => setOutreachModalLead(lead)}
+                          className="text-xs bg-violet-50 hover:bg-violet-100 text-violet-700 border border-violet-200 px-2.5 py-1 rounded-lg transition-colors font-medium"
+                        >
+                          ✉️ Outreach
                         </button>
 
                         {/* Save to List dropdown */}

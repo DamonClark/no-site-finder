@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { headers } from "next/headers";
 import { Geist, Geist_Mono } from "next/font/google";
 import { ClerkProvider } from "@clerk/nextjs";
 import { Analytics } from "@vercel/analytics/next";
@@ -52,29 +53,46 @@ const websiteSchema = {
   url: SITE_URL,
 };
 
-export default function RootLayout({
+export default async function RootLayout({
   children,
 }: Readonly<{
   children: React.ReactNode;
 }>) {
-  return (
-    <ClerkProvider>
-      <html lang="en">
-        <body
-          className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-        >
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
-          />
-          <script
-            type="application/ld+json"
-            dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
-          />
-          {children}
-          <Analytics />
-        </body>
-      </html>
-    </ClerkProvider>
+  const headerList = await headers();
+  const host = headerList.get("host") ?? "";
+  const hostname = host.split(":")[0].toLowerCase();
+  const isLocalHostname =
+    hostname === "localhost" ||
+    hostname === "127.0.0.1" ||
+    hostname === "0.0.0.0" ||
+    hostname.endsWith(".local") ||
+    hostname.endsWith(".test") ||
+    hostname.includes("lvh.me") ||
+    hostname.startsWith("192.") ||
+    hostname.startsWith("10.") ||
+    hostname.startsWith("172.");
+  const shouldUseClerk = process.env.NODE_ENV !== "development" || !isLocalHostname;
+
+  const shell = (
+    <html lang="en">
+      <body className={`${geistSans.variable} ${geistMono.variable} antialiased`}>
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(organizationSchema) }}
+        />
+        <script
+          type="application/ld+json"
+          dangerouslySetInnerHTML={{ __html: JSON.stringify(websiteSchema) }}
+        />
+        {children}
+        <Analytics />
+      </body>
+    </html>
   );
+
+  if (!shouldUseClerk) {
+    return shell;
+  }
+
+  return <ClerkProvider>{shell}</ClerkProvider>;
 }

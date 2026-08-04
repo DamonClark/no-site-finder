@@ -28,6 +28,7 @@ model User {
   stripeSubscriptionId   String?    @unique
   stripePriceId          String?
   stripeCurrentPeriodEnd DateTime?
+  calendlyUrl            String?
   createdAt              DateTime   @default(now())
   updatedAt              DateTime   @updatedAt
   leads                  UserLead[]

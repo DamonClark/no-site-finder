@@ -16,6 +16,7 @@ interface PreviewData {
   phone: string;
   rating: number | null;
   reviewCount: number | null;
+  bookingUrl: string | null;
 }
 
 const COLOR_MAP: Record<PreviewData['colorScheme'], { hero: string; btn: string; accent: string }> = {
@@ -27,6 +28,15 @@ const COLOR_MAP: Record<PreviewData['colorScheme'], { hero: string; btn: string;
   teal:   { hero: 'bg-teal-600',   btn: 'bg-teal-600 hover:bg-teal-700',    accent: 'text-teal-600' },
 };
 
+// Buffer isn't available in the browser — this runs client-side (hydration + any
+// client re-render), so it must decode base64url without Node's Buffer API.
+function base64UrlDecode(input: string): string {
+  const base64 = input.replace(/-/g, '+').replace(/_/g, '/').padEnd(input.length + (4 - (input.length % 4)) % 4, '=');
+  const binary = atob(base64);
+  const bytes = Uint8Array.from(binary, (c) => c.charCodeAt(0));
+  return new TextDecoder('utf-8').decode(bytes);
+}
+
 function PreviewContent() {
   const params = useSearchParams();
   const b = params.get('b');
@@ -34,7 +44,7 @@ function PreviewContent() {
   let data: PreviewData | null = null;
   if (b) {
     try {
-      data = JSON.parse(Buffer.from(b, 'base64url').toString('utf-8')) as PreviewData;
+      data = JSON.parse(base64UrlDecode(b)) as PreviewData;
     } catch {
       // invalid param — show error below
     }
@@ -52,7 +62,7 @@ function PreviewContent() {
   }
 
   const colors = COLOR_MAP[data.colorScheme] ?? COLOR_MAP.blue;
-  const bookingUrl = process.env.NEXT_PUBLIC_BOOKING_URL ?? `mailto:?subject=Website for ${encodeURIComponent(data.name)}`;
+  const bookingUrl = data.bookingUrl || `mailto:?subject=Website for ${encodeURIComponent(data.name)}`;
   const city = data.address.split(',').slice(-3, -2)[0]?.trim() ?? data.address;
 
   return (

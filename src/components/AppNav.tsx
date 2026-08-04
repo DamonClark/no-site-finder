@@ -3,15 +3,18 @@
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { UserButton } from '@clerk/nextjs';
+import { ClerkFallbackLink, useClerkAvailability } from '@/components/ClerkAvailability';
 
 const NAV_LINKS = [
   { href: '/search', label: 'Search' },
   { href: '/leads', label: 'My Leads' },
   { href: '/lists', label: 'My Lists' },
+  { href: '/settings', label: 'Settings' },
 ];
 
 export function AppNav() {
   const pathname = usePathname();
+  const isClerkEnabled = useClerkAvailability();
 
   return (
     <header className="sticky top-0 z-40 bg-white/90 backdrop-blur-sm border-b border-slate-200">
@@ -48,7 +51,7 @@ export function AppNav() {
         </nav>
 
         <div className="shrink-0">
-          <UserButton />
+          {isClerkEnabled ? <UserButton /> : <ClerkFallbackLink className="text-sm font-medium text-slate-600 hover:text-slate-900" />}
         </div>
       </div>
     </header>

@@ -8,6 +8,7 @@ export interface WebsiteIntelligence {
 
 export type PipelineStatus =
   | 'new'
+  | 'message_drafted'
   | 'contacted'
   | 'follow_up'
   | 'meeting_scheduled'
@@ -66,4 +67,7 @@ export interface Business {
   websiteValidationReason: string | null;
   // Website intelligence (populated during batch processing)
   websiteIntelligence?: WebsiteIntelligence | null;
+  // Google Business Profile content (used to enrich AI-generated outreach/site copy)
+  editorialSummary: string | null;
+  reviewSnippets: string[] | null;
 }

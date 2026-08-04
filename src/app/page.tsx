@@ -1,7 +1,10 @@
+'use client';
+
 import Link from 'next/link';
 import { SignedIn, SignedOut } from '@clerk/nextjs';
 import { UpgradeButton } from '@/components/UpgradeButton';
 import { PricingViewTracker } from '@/components/PricingViewTracker';
+import { ClerkFallbackLink, useClerkAvailability } from '@/components/ClerkAvailability';
 import { BRAND_NAME, SITE_URL, SITE_DESCRIPTION, FAQ_ITEMS } from '@/lib/site-content';
 
 const softwareApplicationSchema = {
@@ -31,6 +34,8 @@ const faqPageSchema = {
 };
 
 export default function LandingPage() {
+  const isClerkEnabled = useClerkAvailability();
+
   return (
     <div className="min-h-screen bg-white text-gray-900">
       <script
@@ -58,25 +63,39 @@ export default function LandingPage() {
             <a href="#pricing" className="hover:text-slate-900 transition-colors">Pricing</a>
           </div>
           <div className="flex items-center gap-3">
-            <SignedOut>
-              <Link href="/sign-in" className="text-sm text-slate-600 hover:text-slate-900 transition-colors font-medium hidden sm:block">
-                Sign in
-              </Link>
-              <Link
-                href="/sign-up"
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
-              >
-                Get started free
-              </Link>
-            </SignedOut>
-            <SignedIn>
-              <Link
-                href="/search"
-                className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
-              >
-                Open App →
-              </Link>
-            </SignedIn>
+            {isClerkEnabled ? (
+              <>
+                <SignedOut>
+                  <Link href="/sign-in" className="text-sm text-slate-600 hover:text-slate-900 transition-colors font-medium hidden sm:block">
+                    Sign in
+                  </Link>
+                  <Link
+                    href="/sign-up"
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
+                  >
+                    Get started free
+                  </Link>
+                </SignedOut>
+                <SignedIn>
+                  <Link
+                    href="/search"
+                    className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
+                  >
+                    Open App →
+                  </Link>
+                </SignedIn>
+              </>
+            ) : (
+              <>
+                <ClerkFallbackLink className="text-sm text-slate-600 hover:text-slate-900 transition-colors font-medium hidden sm:block" />
+                <Link
+                  href="/search"
+                  className="bg-blue-600 hover:bg-blue-700 text-white text-sm font-semibold px-4 py-2 rounded-lg transition-colors shadow-sm"
+                >
+                  Open App →
+                </Link>
+              </>
+            )}
           </div>
         </div>
       </nav>
@@ -318,17 +337,28 @@ export default function LandingPage() {
                   </li>
                 ))}
               </ul>
-              <SignedOut>
+              {isClerkEnabled ? (
+                <>
+                  <SignedOut>
+                    <Link
+                      href="/sign-up"
+                      className="block text-center bg-white text-blue-600 hover:bg-blue-50 font-semibold px-4 py-3 rounded-xl transition-colors shadow-sm"
+                    >
+                      Get started
+                    </Link>
+                  </SignedOut>
+                  <SignedIn>
+                    <UpgradeButton className="w-full bg-white text-blue-600 hover:bg-blue-50 font-semibold px-4 py-3 rounded-xl transition-colors shadow-sm" />
+                  </SignedIn>
+                </>
+              ) : (
                 <Link
                   href="/sign-up"
                   className="block text-center bg-white text-blue-600 hover:bg-blue-50 font-semibold px-4 py-3 rounded-xl transition-colors shadow-sm"
                 >
                   Get started
                 </Link>
-              </SignedOut>
-              <SignedIn>
-                <UpgradeButton className="w-full bg-white text-blue-600 hover:bg-blue-50 font-semibold px-4 py-3 rounded-xl transition-colors shadow-sm" />
-              </SignedIn>
+              )}
             </div>
           </div>
         </div>
