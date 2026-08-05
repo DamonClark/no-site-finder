@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processBatch } from '@/lib/places';
+import { processBatch, countOpportunities } from '@/lib/places';
 import { checkAndIncrementUsage, type UsageResult } from '@/lib/usage';
 import { makeRadiusCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
 import { classifyLocation } from '@/lib/geo-scope';
@@ -124,19 +124,21 @@ export async function POST(req: Request) {
   }
 
   const { category, baseCity, radiusMiles: rawRadius } = await req.json();
-  // Hard cap at 25 miles — beyond that the grid grows to 19 points and Place Details
-  // calls can reach 200+, costing $3-7 per search at Google API rates.
+  // Radius is capped at 50 miles. Place Details spend is separately capped at
+  // MAX_DETAILS below regardless of radius, so a wider radius costs only a
+  // few extra cheap Nearby Search calls, not more Details calls.
   const radiusMiles = Math.min(Number(rawRadius) || 10, 50);
   const apiKey = process.env.GOOGLE_API_KEY;
 
   if (!apiKey) return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
+  const key: string = apiKey; // fixed string type so nested closures below don't lose narrowing
   if (!category?.trim()) return NextResponse.json({ error: 'category is required' }, { status: 400 });
   if (!baseCity?.trim()) return NextResponse.json({ error: 'baseCity is required' }, { status: 400 });
   if (!rawRadius) return NextResponse.json({ error: 'radiusMiles is required' }, { status: 400 });
 
   const scope = classifyLocation(baseCity);
 
-  function logSearchEvent(businesses: Business[]) {
+  function logSearchEvent(businesses: Business[], escalated = false) {
     prisma.searchEvent
       .create({
         data: {
@@ -147,6 +149,8 @@ export async function POST(req: Request) {
           scope,
           resultCount: businesses.length,
           noWebsiteCount: businesses.filter((b) => !b.hasWebsite).length,
+          opportunityCount: countOpportunities(businesses),
+          escalated,
         },
       })
       .catch((e) => console.error('[search-radius] SearchEvent write failed:', e));
@@ -155,7 +159,8 @@ export async function POST(req: Request) {
   const cacheKey = makeRadiusCacheKey(category, baseCity, radiusMiles);
   const cached = await getCachedSearch(cacheKey).catch(() => null);
   if (cached) {
-    logSearchEvent(cached.results as unknown as Business[]);
+    const cachedMeta = cached.meta as { escalated?: boolean } | null;
+    logSearchEvent(cached.results as unknown as Business[], cachedMeta?.escalated ?? false);
     return NextResponse.json({ businesses: cached.results, meta: cached.meta, usage: clientUsage, fromCache: true });
   }
 
@@ -254,9 +259,72 @@ export async function POST(req: Request) {
     }
   }
 
-  // Step 4: Fetch Place Details + website health checks (shared utility)
-  // Cap at 100 to keep Place Details spend bounded (~$2.50 max).
-  const businesses = await processBatch(allPlaceIds.slice(0, 100), apiKey);
+  // Step 4: Fetch Place Details + website health checks, spent in waves.
+  // MAX_DETAILS is the absolute ceiling for this request no matter how many
+  // waves run below — total spend stays bounded at ~$2.50, same as before.
+  const MAX_DETAILS = 100;
+  const FIRST_WAVE = 60;
+  const OPPORTUNITY_TARGET = 15;
+
+  const spentIds = new Set<string>();
+  let businesses: Business[] = [];
+
+  async function spendDetails(ids: string[]) {
+    const fresh = ids.filter((id) => !spentIds.has(id)).slice(0, MAX_DETAILS - spentIds.size);
+    if (fresh.length === 0) return;
+    const batch = await processBatch(fresh, key);
+    fresh.forEach((id) => spentIds.add(id));
+    businesses = businesses.concat(batch);
+  }
+
+  // Wave 1: spend the first FIRST_WAVE Details calls on the originally
+  // discovered candidates.
+  await spendDetails(allPlaceIds.slice(0, FIRST_WAVE));
+
+  // Wave 2: if that under-delivers and discovery already found more
+  // candidates at this radius, spend the remaining budget on them before
+  // widening the geographic net.
+  if (countOpportunities(businesses) < OPPORTUNITY_TARGET) {
+    await spendDetails(allPlaceIds.slice(FIRST_WAVE, MAX_DETAILS));
+  }
+
+  // Wave 3: still short of the target and there's room to widen — re-run
+  // cheap Nearby Search discovery at the full 50-mile grid and spend any
+  // remaining Details budget on newly found candidates. This only adds a
+  // handful of extra Nearby Search calls (~$0.30-0.60), never more Details
+  // calls than MAX_DETAILS allows in total.
+  let escalated = false;
+  let extraPointsUsed = 0;
+  if (countOpportunities(businesses) < OPPORTUNITY_TARGET && radiusMiles < 50 && spentIds.size < MAX_DETAILS) {
+    escalated = true;
+    const widerPoints = generateSearchPoints(center.lat, center.lng, 50);
+    extraPointsUsed = widerPoints.length;
+    const newIds: string[] = [];
+    for (const point of widerPoints) {
+      const url = [
+        'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+        `?location=${point.lat},${point.lng}`,
+        `&radius=${point.searchRadiusMeters}`,
+        `&keyword=${encodeURIComponent(category)}`,
+        `&key=${key}`,
+      ].join('');
+      try {
+        const res = await fetch(url);
+        const data = await res.json();
+        for (const place of data.results ?? []) {
+          if (!seenPlaceIds.has(place.place_id)) {
+            seenPlaceIds.add(place.place_id);
+            allPlaceIds.push(place.place_id);
+            newIds.push(place.place_id);
+          }
+        }
+      } catch {
+        // Skip failed grid points rather than aborting the whole request
+      }
+      await new Promise((r) => setTimeout(r, 100));
+    }
+    await spendDetails(newIds);
+  }
 
   // Step 5: Derive towns list from result addresses
   const towns = [
@@ -268,13 +336,14 @@ export async function POST(req: Request) {
   ].sort();
 
   const meta = {
-    searchPointsUsed: searchPoints.length,
+    searchPointsUsed: searchPoints.length + extraPointsUsed,
     rawResultsFound: allPlaceIds.length,
     townsFound: towns,
+    escalated,
   };
 
   setCachedSearch(cacheKey, businesses, meta).catch((e) => console.error('[search-radius] cache write failed:', e));
-  logSearchEvent(businesses);
+  logSearchEvent(businesses, escalated);
 
   return NextResponse.json({ businesses, meta, usage: clientUsage });
 }

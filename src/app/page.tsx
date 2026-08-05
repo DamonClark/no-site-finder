@@ -269,7 +269,7 @@ export default function LandingPage() {
               <ul className="space-y-3 text-sm text-slate-600">
                 {[
                   '3 searches total',
-                  'Single keyword search',
+                  'Keyword + radius search',
                   'Lead scoring + filters',
                   'Basic pipeline tracking',
                 ].map((f) => (
@@ -305,7 +305,6 @@ export default function LandingPage() {
               <ul className="space-y-3 text-sm text-blue-100">
                 {[
                   '20 searches/month',
-                  'Radius search (any area)',
                   'Website intelligence signals',
                   'All 50+ industry presets',
                   'Contact Pipeline (7 stages)',

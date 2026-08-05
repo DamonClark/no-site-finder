@@ -1,5 +1,5 @@
 import { NextResponse } from 'next/server';
-import { processBatch } from '@/lib/places';
+import { processBatch, countOpportunities } from '@/lib/places';
 import { checkAndIncrementUsage, type UsageResult } from '@/lib/usage';
 import { makeKeywordCacheKey, getCachedSearch, setCachedSearch } from '@/lib/cache';
 import { classifyLocation } from '@/lib/geo-scope';
@@ -47,6 +47,7 @@ export async function POST(req: Request) {
   if (!apiKey) {
     return NextResponse.json({ error: 'Missing API key' }, { status: 500 });
   }
+  const key: string = apiKey; // fixed string type so nested closures below don't lose narrowing
 
   function extractKeyword(q: string): string {
     return q.split(/\s+in\s+/i)[0].trim();
@@ -59,7 +60,7 @@ export async function POST(req: Request) {
   const locationRaw = extractCity(query);
   const scope = classifyLocation(locationRaw);
 
-  function logSearchEvent(businesses: Business[]) {
+  function logSearchEvent(businesses: Business[], escalated = false) {
     prisma.searchEvent
       .create({
         data: {
@@ -70,6 +71,8 @@ export async function POST(req: Request) {
           scope,
           resultCount: businesses.length,
           noWebsiteCount: businesses.filter((b) => !b.hasWebsite).length,
+          opportunityCount: countOpportunities(businesses),
+          escalated,
         },
       })
       .catch((e) => console.error('[search] SearchEvent write failed:', e));
@@ -78,8 +81,9 @@ export async function POST(req: Request) {
   const cacheKey = makeKeywordCacheKey(query);
   const cached = await getCachedSearch(cacheKey).catch(() => null);
   if (cached) {
-    logSearchEvent(cached.results as unknown as Business[]);
-    return NextResponse.json({ businesses: cached.results, usage: clientUsage, fromCache: true });
+    const cachedMeta = cached.meta as { escalated?: boolean } | null;
+    logSearchEvent(cached.results as unknown as Business[], cachedMeta?.escalated ?? false);
+    return NextResponse.json({ businesses: cached.results, meta: cached.meta, usage: clientUsage, fromCache: true });
   }
 
   // Build synonym queries: find matching synonyms for the keyword and append the city
@@ -140,6 +144,23 @@ export async function POST(req: Request) {
       { lat: center.lat + latDelta * 0.7, lng: center.lng + lngDelta * 0.7 }, // NE
       { lat: center.lat - latDelta * 0.7, lng: center.lng - lngDelta * 0.7 }, // SW
     ];
+  }
+
+  // Wider 8-point ring (~25 miles out) used only when the initial grid
+  // doesn't surface enough no-website/broken-website opportunities.
+  function getWideGridPoints(center: { lat: number; lng: number }) {
+    const MILES = 25;
+    const latDelta = MILES / 69;
+    const lngDelta = MILES / (Math.cos((center.lat * Math.PI) / 180) * 69);
+    const points: { lat: number; lng: number }[] = [];
+    for (let i = 0; i < 8; i++) {
+      const angle = (i * 45 * Math.PI) / 180;
+      points.push({
+        lat: center.lat + Math.cos(angle) * latDelta,
+        lng: center.lng + Math.sin(angle) * lngDelta,
+      });
+    }
+    return points;
   }
 
   function distanceNearby(loc: { lat: number; lng: number }) {
@@ -217,14 +238,76 @@ export async function POST(req: Request) {
     }
   }
 
-  // Fetch details + website checks for all unique places (capped at 150)
-  const businesses = await processBatch(placeIds.slice(0, 150), apiKey);
+  // Fetch details + website checks, spent in waves. MAX_DETAILS is the
+  // absolute ceiling for this request no matter how many waves run below —
+  // total spend stays bounded, same as before.
+  const MAX_DETAILS = 150;
+  const FIRST_WAVE = 90;
+  const OPPORTUNITY_TARGET = 15;
+
+  const spentIds = new Set<string>();
+  let businesses: Business[] = [];
+
+  async function spendDetails(ids: string[]) {
+    const fresh = ids.filter((id) => !spentIds.has(id)).slice(0, MAX_DETAILS - spentIds.size);
+    if (fresh.length === 0) return;
+    const batch = await processBatch(fresh, key);
+    fresh.forEach((id) => spentIds.add(id));
+    businesses = businesses.concat(batch);
+  }
+
+  // Wave 1: spend the first FIRST_WAVE Details calls on the originally discovered candidates.
+  await spendDetails(placeIds.slice(0, FIRST_WAVE));
+
+  // Wave 2: if that under-delivers and discovery already found more candidates,
+  // spend the remaining budget on them before widening the search area.
+  if (countOpportunities(businesses) < OPPORTUNITY_TARGET) {
+    await spendDetails(placeIds.slice(FIRST_WAVE, MAX_DETAILS));
+  }
+
+  // Wave 3: still short of the target and we know the city center — widen
+  // the grid to ~25 miles with cheap extra Nearby Search calls and spend any
+  // remaining Details budget on newly found candidates. Never exceeds
+  // MAX_DETAILS total Details calls.
+  let escalated = false;
+  if (countOpportunities(businesses) < OPPORTUNITY_TARGET && cityCenter && spentIds.size < MAX_DETAILS) {
+    escalated = true;
+    const center = cityCenter as { lat: number; lng: number };
+    const widePoints = getWideGridPoints(center);
+    const wideResults = await Promise.all(
+      widePoints.map((point) =>
+        fetch(
+          [
+            'https://maps.googleapis.com/maps/api/place/nearbysearch/json',
+            `?location=${point.lat},${point.lng}`,
+            `&radius=20000`,
+            `&keyword=${encodeURIComponent(keyword)}`,
+            `&key=${key}`,
+          ].join('')
+        )
+          .then((r) => r.json())
+          .catch(() => ({ results: [] }))
+      )
+    );
+    const newIds: string[] = [];
+    for (const data of wideResults as { results?: { place_id: string }[] }[]) {
+      for (const place of data.results ?? []) {
+        if (!seenIds.has(place.place_id)) {
+          seenIds.add(place.place_id);
+          newIds.push(place.place_id);
+        }
+      }
+    }
+    await spendDetails(newIds);
+  }
 
   const noWebsiteCount = businesses.filter((b) => !b.hasWebsite).length;
-  console.log(`[search] "${query}" → ${businesses.length} businesses, ${noWebsiteCount} no-website leads`);
+  const opportunityCount = countOpportunities(businesses);
+  console.log(`[search] "${query}" → ${businesses.length} businesses, ${noWebsiteCount} no-website, ${opportunityCount} opportunities`);
 
-  setCachedSearch(cacheKey, businesses).catch((e) => console.error('[search] cache write failed:', e));
-  logSearchEvent(businesses);
+  const meta = { escalated };
+  setCachedSearch(cacheKey, businesses, meta).catch((e) => console.error('[search] cache write failed:', e));
+  logSearchEvent(businesses, escalated);
 
-  return NextResponse.json({ businesses, usage: clientUsage });
+  return NextResponse.json({ businesses, meta, usage: clientUsage });
 }

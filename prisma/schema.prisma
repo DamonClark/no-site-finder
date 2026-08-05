@@ -38,17 +38,19 @@ model User {
 }
 
 model SearchEvent {
-  id             String              @id @default(cuid())
-  userId         String
-  mode           String // 'keyword' | 'radius'
-  rawQuery       String
-  locationRaw    String
-  scope          String // 'city' | 'state' | 'country' | 'empty'
-  resultCount    Int
-  noWebsiteCount Int
-  createdAt      DateTime            @default(now())
-  user           User                @relation(fields: [userId], references: [id])
-  followUpDraft  FollowUpEmailDraft?
+  id               String              @id @default(cuid())
+  userId           String
+  mode             String // 'keyword' | 'radius'
+  rawQuery         String
+  locationRaw      String
+  scope            String // 'city' | 'state' | 'country' | 'empty'
+  resultCount      Int
+  noWebsiteCount   Int
+  opportunityCount Int                 @default(0) // no website + broken + slow
+  escalated        Boolean             @default(false) // auto-widened search area to hit the opportunity target
+  createdAt        DateTime            @default(now())
+  user             User                @relation(fields: [userId], references: [id])
+  followUpDraft    FollowUpEmailDraft?
 
   @@index([userId])
   @@index([createdAt])

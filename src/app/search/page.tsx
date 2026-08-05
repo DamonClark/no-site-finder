@@ -15,7 +15,7 @@ import { TalkWithFounder } from '@/components/TalkWithFounder';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SortKey = 'leadScore' | 'reviewCount' | 'rating' | 'name';
-type WebsiteFilter = 'any' | 'missing' | 'missing_or_broken' | 'broken' | 'slow';
+type WebsiteFilter = 'any' | 'opportunity' | 'missing' | 'missing_or_broken' | 'broken' | 'slow';
 type SearchMode = 'single' | 'radius';
 
 interface Filters {
@@ -30,6 +30,7 @@ interface SearchMeta {
   searchPointsUsed: number;
   rawResultsFound: number;
   townsFound: string[];
+  escalated?: boolean;
 }
 
 interface UsageState {
@@ -45,7 +46,7 @@ const HIGH_VALUE_SCORE = 200;
 const DEFAULT_FILTERS: Filters = {
   minReviews: 0,
   minRating: 0,
-  websiteStatus: 'missing',
+  websiteStatus: 'opportunity',
   category: '',
   city: '',
 };
@@ -84,29 +85,26 @@ function getScoreBadge(score: number, hasWebsite: boolean) {
   return { label: 'Cool Lead', className: 'bg-blue-50 text-blue-700 border border-blue-200' };
 }
 
-function exportCSV(businesses: Business[], filename = 'leads.csv') {
-  const headers = [
-    'Name', 'Address', 'Phone', 'Rating', 'Reviews', 'Lead Score', 'Category',
-    'Has Website', 'Website', 'Website Status', 'Business Status', 'Maps URL', 'Profile URL',
-    'Email', 'Email Source', 'Owner Name',
-  ];
-  const rows = businesses.map((b) => [
-    b.name, b.address, b.phone,
-    b.rating ?? '', b.reviewCount ?? '', b.leadScore, b.category,
-    b.hasWebsite ? 'Yes' : 'No', b.website ?? '', b.websiteStatus,
-    b.businessStatus, b.mapsUrl, b.profileUrl,
-    b.email ?? '', b.emailSource ?? '', b.ownerName ?? '',
-  ]);
-  const csv = [headers, ...rows]
-    .map((row) => row.map((v) => `"${String(v).replace(/"/g, '""')}"`).join(','))
-    .join('\n');
-  const blob = new Blob([csv], { type: 'text/csv' });
-  const objectUrl = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = objectUrl;
-  a.download = filename;
-  a.click();
-  URL.revokeObjectURL(objectUrl);
+async function exportCSV(businesses: Business[], filename = 'leads.csv'): Promise<'ok' | 'upgrade_required' | 'error'> {
+  try {
+    const res = await fetch('/api/export', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ businesses, filename }),
+    });
+    if (res.status === 403) return 'upgrade_required';
+    if (!res.ok) return 'error';
+    const blob = await res.blob();
+    const objectUrl = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = objectUrl;
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(objectUrl);
+    return 'ok';
+  } catch {
+    return 'error';
+  }
 }
 
 function applyFilters(leads: Business[], filters: Filters): Business[] {
@@ -115,6 +113,7 @@ function applyFilters(leads: Business[], filters: Filters): Business[] {
     if (filters.minRating > 0 && (b.rating ?? 0) < filters.minRating) return false;
     if (filters.category && !b.category.toLowerCase().includes(filters.category.toLowerCase())) return false;
     if (filters.city && !b.address.toLowerCase().includes(filters.city.toLowerCase())) return false;
+    if (filters.websiteStatus === 'opportunity' && b.websiteStatus === 'ok') return false;
     if (filters.websiteStatus === 'missing' && b.hasWebsite) return false;
     if (filters.websiteStatus === 'missing_or_broken' && b.websiteStatus !== 'none' && b.websiteStatus !== 'broken') return false;
     if (filters.websiteStatus === 'broken' && b.websiteStatus !== 'broken') return false;
@@ -207,7 +206,7 @@ function LocationWarning({
   );
 }
 
-function StatCard({ label, value, highlight = false, icon }: { label: string; value: number; highlight?: boolean; icon: string }) {
+function StatCard({ label, value, highlight = false, icon, sublabel }: { label: string; value: number; highlight?: boolean; icon: string; sublabel?: string }) {
   return (
     <div className={`rounded-xl border p-4 text-center ${highlight ? 'border-blue-200 bg-blue-50' : 'bg-white border-slate-200'}`}>
       <div className="text-xl mb-1">{icon}</div>
@@ -215,6 +214,7 @@ function StatCard({ label, value, highlight = false, icon }: { label: string; va
         {value.toLocaleString()}
       </p>
       <p className="text-xs text-slate-500 mt-0.5">{label}</p>
+      {sublabel && <p className="text-[11px] text-slate-400 mt-0.5">{sublabel}</p>}
     </div>
   );
 }
@@ -576,13 +576,10 @@ export default function Home() {
     setTimeout(() => setCopiedEmail(null), 2000);
   };
 
-  const handleExportClick = (businesses: Business[], filename?: string) => {
+  const handleExportClick = async (businesses: Business[], filename?: string) => {
     track('csv_export_attempted');
-    if (usage?.plan === 'pro') {
-      exportCSV(businesses, filename);
-    } else {
-      setShowExportPaywall(true);
-    }
+    const result = await exportCSV(businesses, filename);
+    if (result === 'upgrade_required') setShowExportPaywall(true);
   };
 
   const handleEnrich = async () => {
@@ -755,18 +752,31 @@ export default function Home() {
   );
 
   const stats = useMemo(() => {
-    const noWebsite = leads.filter((b) => !b.hasWebsite);
-    const highValue = noWebsite.filter((b) => b.leadScore >= HIGH_VALUE_SCORE);
-    const avgReviews = noWebsite.length
-      ? Math.round(noWebsite.reduce((s, b) => s + (b.reviewCount ?? 0), 0) / noWebsite.length)
+    // "Opportunities" = no website at all, or a website that's broken/slow — all are viable leads.
+    const opportunities = leads.filter((b) => b.websiteStatus !== 'ok');
+    const noSiteCount = opportunities.filter((b) => b.websiteStatus === 'none').length;
+    const brokenCount = opportunities.filter((b) => b.websiteStatus === 'broken').length;
+    const slowCount = opportunities.filter((b) => b.websiteStatus === 'slow').length;
+    const highValue = opportunities.filter((b) => b.leadScore >= HIGH_VALUE_SCORE);
+    const avgReviews = opportunities.length
+      ? Math.round(opportunities.reduce((s, b) => s + (b.reviewCount ?? 0), 0) / opportunities.length)
       : 0;
     const categoryCounts: Record<string, number> = {};
-    for (const b of noWebsite) {
+    for (const b of opportunities) {
       const cat = b.category.split(',')[0].trim() || 'Unknown';
       categoryCounts[cat] = (categoryCounts[cat] ?? 0) + 1;
     }
     const topCategories = Object.entries(categoryCounts).sort((a, b) => b[1] - a[1]).slice(0, 5);
-    return { total: leads.length, noWebsite: noWebsite.length, highValue: highValue.length, avgReviews, topCategories };
+    return {
+      total: leads.length,
+      opportunities: opportunities.length,
+      noSiteCount,
+      brokenCount,
+      slowCount,
+      highValue: highValue.length,
+      avgReviews,
+      topCategories,
+    };
   }, [leads]);
 
   // Pipeline counts across all tracked leads
@@ -1081,7 +1091,13 @@ export default function Home() {
             {/* Stats */}
             <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
               <StatCard icon="📍" label="Total Found" value={stats.total} />
-              <StatCard icon="🚫" label="No Website" value={stats.noWebsite} highlight />
+              <StatCard
+                icon="🎯"
+                label="Opportunities Found"
+                value={stats.opportunities}
+                highlight
+                sublabel={`${stats.noSiteCount} no site · ${stats.brokenCount} broken · ${stats.slowCount} slow`}
+              />
               <StatCard icon="🔥" label="High Opportunity" value={stats.highValue} highlight={stats.highValue > 0} />
               <StatCard icon="⭐" label="Avg Reviews" value={stats.avgReviews} />
             </div>
@@ -1092,6 +1108,11 @@ export default function Home() {
                 <p className="text-xs font-semibold text-indigo-700 uppercase tracking-wide mb-2">
                   Area Searched — {searchMeta.searchPointsUsed} grid points · {searchMeta.rawResultsFound} raw results
                 </p>
+                {searchMeta.escalated && (
+                  <p className="text-xs text-indigo-600 mb-2">
+                    🔎 Expanded the search area to surface more opportunities.
+                  </p>
+                )}
                 <div className="flex flex-wrap gap-1.5">
                   {searchMeta.townsFound.map((town) => (
                     <button
@@ -1110,7 +1131,7 @@ export default function Home() {
             {stats.topCategories.length > 0 && (
               <div className="bg-white border border-slate-200 rounded-xl p-4">
                 <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
-                  Top Industries Without Websites
+                  Top Industry Opportunities
                 </p>
                 <div className="flex flex-wrap gap-2">
                   {stats.topCategories.map(([cat, count]) => (
@@ -1131,11 +1152,11 @@ export default function Home() {
               <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Quick Filters</p>
               <div className="flex flex-wrap gap-2">
                 {[
-                  { label: 'All No-Website Leads', preset: { websiteStatus: 'missing' as WebsiteFilter, sort: 'leadScore' as SortKey } },
-                  { label: '20+ Reviews', preset: { websiteStatus: 'missing' as WebsiteFilter, minReviews: 20, sort: 'leadScore' as SortKey } },
-                  { label: '50+ Reviews', preset: { websiteStatus: 'missing' as WebsiteFilter, minReviews: 50, sort: 'leadScore' as SortKey } },
-                  { label: '4.5+ Rating', preset: { websiteStatus: 'missing' as WebsiteFilter, minRating: 4.5, sort: 'leadScore' as SortKey } },
-                  { label: 'Missing or Broken', preset: { websiteStatus: 'missing_or_broken' as WebsiteFilter, sort: 'leadScore' as SortKey } },
+                  { label: 'All Opportunities', preset: { websiteStatus: 'opportunity' as WebsiteFilter, sort: 'leadScore' as SortKey } },
+                  { label: 'No Website Only', preset: { websiteStatus: 'missing' as WebsiteFilter, sort: 'leadScore' as SortKey } },
+                  { label: '20+ Reviews', preset: { websiteStatus: 'opportunity' as WebsiteFilter, minReviews: 20, sort: 'leadScore' as SortKey } },
+                  { label: '50+ Reviews', preset: { websiteStatus: 'opportunity' as WebsiteFilter, minReviews: 50, sort: 'leadScore' as SortKey } },
+                  { label: '4.5+ Rating', preset: { websiteStatus: 'opportunity' as WebsiteFilter, minRating: 4.5, sort: 'leadScore' as SortKey } },
                 ].map(({ label, preset }) => (
                   <button
                     key={label}
@@ -1146,7 +1167,7 @@ export default function Home() {
                   </button>
                 ))}
                 <button
-                  onClick={() => applyPreset({ websiteStatus: 'missing', sort: 'leadScore', topN: 20 })}
+                  onClick={() => applyPreset({ websiteStatus: 'opportunity', sort: 'leadScore', topN: 20 })}
                   className="text-xs bg-orange-50 border border-orange-200 text-orange-700 hover:bg-orange-100 rounded-full px-3 py-1.5 font-medium transition-colors"
                 >
                   🏆 Top 20 Opportunities
@@ -1199,8 +1220,9 @@ export default function Home() {
                       className="border border-slate-200 rounded-lg px-3 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500/20"
                     >
                       <option value="any">Any</option>
-                      <option value="missing">No website</option>
-                      <option value="missing_or_broken">Missing or Broken</option>
+                      <option value="opportunity">All opportunities (no site + broken + slow)</option>
+                      <option value="missing">No website only</option>
+                      <option value="missing_or_broken">Missing or broken</option>
                       <option value="broken">Broken website</option>
                       <option value="slow">Slow website</option>
                     </select>

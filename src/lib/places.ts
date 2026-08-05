@@ -22,6 +22,14 @@ function isSocialOrDirectory(url: string): boolean {
   }
 }
 
+/**
+ * A business is an "opportunity" if it has no real website, or its website
+ * is broken/slow — mirrors the free/opportunity filter in the search UI.
+ */
+export function countOpportunities(businesses: Business[]): number {
+  return businesses.filter((b) => b.websiteStatus !== 'ok').length;
+}
+
 export function computeLeadScore(
   rating: number | null,
   reviewCount: number | null,
@@ -39,26 +47,58 @@ function normalizeUrl(url: string): string {
   return url;
 }
 
+// A bare Node fetch (no UA, HEAD method) gets blocked or challenged by many
+// legitimate small-business hosts (Cloudflare, WAFs, security plugins) that
+// let a normal browser straight through — send a real browser UA to avoid
+// false "broken" verdicts on sites that actually load fine.
+const BROWSER_HEADERS = {
+  'User-Agent':
+    'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Safari/537.36',
+  Accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+};
+
+// Statuses where a HEAD request commonly gets treated differently than a real
+// page load — worth retrying with GET before concluding anything.
+const RETRY_WITH_GET_STATUSES = new Set([403, 404, 405, 406, 429, 500, 501, 503]);
+
+// These specific statuses are classic bot-protection/rate-limiting signatures
+// (Cloudflare challenge, WAF block, "too many requests") — they mean the site
+// is up and actively guarding against automated traffic, not that it's
+// broken for a real visitor. Treat them as "ok" rather than penalizing the
+// business for having security in place.
+const LIKELY_BOT_BLOCK_STATUSES = new Set([403, 429, 503]);
+
+function classifyResponse(res: Response, elapsedMs: number): 'ok' | 'broken' | 'slow' {
+  if (!res.ok) {
+    return LIKELY_BOT_BLOCK_STATUSES.has(res.status) ? 'ok' : 'broken';
+  }
+  if (elapsedMs > 4000) return 'slow';
+  return 'ok';
+}
+
+async function fetchOnce(url: string, method: 'HEAD' | 'GET') {
+  return fetch(url, { method, headers: BROWSER_HEADERS, signal: AbortSignal.timeout(8000) });
+}
+
 export async function checkWebsite(url: string): Promise<'ok' | 'broken' | 'slow'> {
   const normalized = normalizeUrl(url);
   try {
     const start = Date.now();
-    let res = await fetch(normalized, {
-      method: 'HEAD',
-      signal: AbortSignal.timeout(6000),
-    });
-    if (res.status === 405 || res.status === 501) {
-      res = await fetch(normalized, {
-        method: 'GET',
-        signal: AbortSignal.timeout(6000),
-      });
+    let res = await fetchOnce(normalized, 'HEAD');
+    if (RETRY_WITH_GET_STATUSES.has(res.status)) {
+      res = await fetchOnce(normalized, 'GET');
     }
-    const elapsed = Date.now() - start;
-    if (!res.ok) return 'broken';
-    if (elapsed > 4000) return 'slow';
-    return 'ok';
+    return classifyResponse(res, Date.now() - start);
   } catch {
-    return 'broken';
+    // One retry with GET — filters out transient network blips and cold
+    // starts rather than permanently mislabeling a working site as broken.
+    try {
+      const start = Date.now();
+      const res = await fetchOnce(normalized, 'GET');
+      return classifyResponse(res, Date.now() - start);
+    } catch {
+      return 'broken';
+    }
   }
 }
 
